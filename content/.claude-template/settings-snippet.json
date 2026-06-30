@@ -1,0 +1,53 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/session-end-cleanup.js",
+            "shell": "bash",
+            "statusMessage": "Cleaning up completed flow sessions"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/session-start.js",
+            "shell": "bash",
+            "statusMessage": "Capturing session ID"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/subagent-tracker.js",
+            "shell": "bash",
+            "statusMessage": "Advancing flow plan step"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/dispatch-enforce.js",
+            "shell": "bash",
+            "statusMessage": "Checking dispatch policy"
+          }
+        ]
+      }
+    ]
+  }
+}

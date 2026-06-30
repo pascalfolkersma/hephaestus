@@ -1,0 +1,31 @@
+shell: claude-code
+
+output:
+  agents_dir: .claude/agents
+  agent_extension: .md
+  skills_dir: .claude/skills
+
+frontmatter:
+  supported_fields: [name, description, tools, model, color]
+  ignored_fields: [archetype, memory, handoffs, target]
+
+# Map semantic tool names (used in agents-source/) to Claude Code's actual tool names.
+tools_mapping:
+  read: Read
+  edit: Edit
+  write: Write
+  glob: Glob
+  search: Grep
+  bash: Bash
+  web_fetch: WebFetch
+  web_search: WebSearch
+
+# Default tool set per archetype, applied when an agent's frontmatter omits `tools`.
+archetype_defaults:
+  executor: [read, edit, write, glob, search, bash]
+  planner: [read, glob, search, bash]
+  orchestrator: [read, glob, search]
+
+# Shell-specific frontmatter extras live under this namespace in the source.
+# The transformer unpacks them into top-level fields when rendering for this shell.
+extras_namespace: claude-code

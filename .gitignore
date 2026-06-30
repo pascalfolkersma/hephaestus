@@ -1,0 +1,70 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor
+.vscode/
+.idea/
+.obsidian/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# dist/ is committed — rebuilt on every commit by a Claude Code hook.
+# build/ stays ignored for any future tooling that needs scratch space.
+build/
+
+# Local env
+.env
+.env.local
+
+# Never track .npmrc anywhere; auth tokens belong in ~/.npmrc only (ADR 0035 §4).
+# publishConfig.registry in package.json handles publish-routing without a committed .npmrc.
+.npmrc
+
+# Hephaestus per-session flow state (ADR 0027) — written at SessionStart, deleted at flow-end
+.claude/flows/
+.claude/.current-session-id
+
+# Local machine settings — contains absolute paths (C:\Users\Pascal\...) that must not be committed
+.claude/settings.local.json
+
+# Personal agent memory — feedback/user/project notes that should not be published.
+# ADR 0004 makes project-local memory version-controlled by default; for a repo going
+# public that default is reversed (the product-repo allowlist also excludes .claude/memory/).
+# Files stay on disk and are still loaded in-session — they are simply not committed.
+.claude/memory/
+
+# Copilot active-subagent side-channel file (ADR 0026) — written at SubagentStart, deleted at SubagentStop
+.claude/.copilot-active-subagent
+
+# Claude Code harness runtime state (scheduled-tasks lock written by ScheduleWakeup).
+.claude/scheduled_tasks.lock
+
+# Lore knowledge base lives in its own private repo (github.com/pascalfolkersma/hephaestus-lore).
+# It stays ON DISK here so the workshop's own agents/flows/roadmap keep working locally
+# (docs_root=lore; lore/flows.md, lore/ROADMAP.md), but it is NOT tracked in this repo —
+# the lore repo is the canonical, version-controlled home. Edit lore in the lore-repo clone,
+# not here (workshop edits to lore/ are untracked and will not reach the lore repo).
+lore/
+
+# Python (in case skills bundle scripts)
+__pycache__/
+*.pyc
+*.pyo
+
+# Build-sync staging artifacts for the hephaestus skill full-bundle (ADR 0029 §6).
+# `npm run build` copies core/ and content/ here as an intermediate step; the result
+# is then carried into dist/skills/hephaestus/ by the build.  These sub-trees must NOT
+# be committed to the source tree — only dist/ is staged by the pre-commit hook.
+# Hand-authored files in content/skills/hephaestus/ (SKILL.md, README.md,
+# UPSTREAM.md, references/) ARE tracked and are NOT covered by these patterns.
+# LICENSE is also tracked but is build-synced from the root LICENSE by
+# scripts/build.js (license-sync step) — do not edit it by hand.
+content/skills/hephaestus/core/
+content/skills/hephaestus/content/

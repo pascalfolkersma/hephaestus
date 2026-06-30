@@ -1,0 +1,8 @@
+{
+  "sourcePaths": [
+    { "path": "core/",     "agents": ["developer", "bug-fixer"] },
+    { "path": "scripts/",  "agents": ["developer", "bug-fixer"] },
+    { "path": "content/",  "agents": ["developer", "bug-fixer"] },
+    { "path": "test/",     "agent":  "test-writer" }
+  ]
+}

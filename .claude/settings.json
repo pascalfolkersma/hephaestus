@@ -1,0 +1,94 @@
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/hooks/session-end-cleanup.js\"",
+            "shell": "bash",
+            "statusMessage": "Cleaning up completed flow sessions"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/hooks/session-start.js\"",
+            "shell": "bash",
+            "statusMessage": "Capturing session ID"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/hooks/lore-autosync.js\"",
+            "shell": "bash",
+            "statusMessage": "Syncing lore/ to the lore repo"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/hooks/subagent-tracker.js\"",
+            "shell": "bash",
+            "statusMessage": "Advancing flow plan step"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/hooks/lore-autosync.js\"",
+            "if": "Bash(git push*)",
+            "shell": "bash",
+            "statusMessage": "Syncing lore/ to the lore repo (post-push)"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && npm run build && git add dist/ && node \"$CLAUDE_PROJECT_DIR/scripts/hooks/audit-gated-paths.js\"",
+            "if": "Bash(git commit *)",
+            "shell": "bash",
+            "statusMessage": "Rebuilding dist/ before commit"
+          }
+        ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/hooks/dispatch-enforce.js\"",
+            "shell": "bash",
+            "statusMessage": "Checking dispatch policy"
+          }
+        ]
+      }
+    ]
+  }
+}

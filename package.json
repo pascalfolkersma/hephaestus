@@ -1,0 +1,37 @@
+{
+  "name": "@pascalfolkersma/hephaestus",
+  "version": "0.20.0",
+  "license": "MIT",
+  "private": false,
+  "type": "module",
+  "description": "Cross-shell project boilerplate that forges agents, skills, and a Karpathy-style knowledge structure into new or existing projects.",
+  "author": "Pascal Folkersma",
+  "homepage": "https://github.com/pascalfolkersma/hephaestus#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pascalfolkersma/hephaestus.git"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build.js",
+    "init": "node core/init.js",
+    "lore:sync": "node scripts/hooks/lore-autosync.js",
+    "test": "node --test --test-concurrency=1 \"test/**/*.test.js\""
+  },
+  "bin": {
+    "hephaestus": "dist/skills/hephaestus/core/init.js"
+  },
+  "files": [
+    "dist/skills",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  }
+}

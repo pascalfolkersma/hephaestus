@@ -1,0 +1,37 @@
+shell: copilot
+
+output:
+  agents_dir: .github/agents
+  agent_extension: .agent.md
+  skills_dir: .github/skills
+
+frontmatter:
+  # Per ADR 0001: Copilot supports name, description, tools, model, target, handoffs.
+  supported_fields: [name, description, tools, model, target, handoffs]
+  ignored_fields: [archetype, memory, color, claude-code]
+
+# Map semantic tool names to Copilot's actual tool names.
+# `read`, `edit`, `search`, `shell` are documented in ADR 0001.
+# `write`, `glob`, `web_fetch`, `web_search` are inferred from Copilot's
+# lowercase-snake naming convention; validate against the Copilot docs
+# before relying on them in production renders.
+tools_mapping:
+  read: read
+  edit: edit
+  write: write
+  glob: glob
+  search: search
+  bash: shell
+  web_fetch: web_fetch
+  web_search: web_search
+
+# Default tool set per archetype, applied when an agent's frontmatter omits `tools`.
+archetype_defaults:
+  executor: [read, edit, write, glob, search, bash]
+  planner: [read, glob, search, bash]
+  orchestrator: [read, glob, search]
+
+# Shell-specific frontmatter extras live under this namespace in the source.
+# E.g. `copilot: { target: vscode, handoffs: [git-commit-push] }` round-trips
+# into top-level `target:` and `handoffs:` fields on render.
+extras_namespace: copilot

@@ -1,0 +1,109 @@
+# init.yaml — copy-paste skeleton for npx @pascalfolkersma/hephaestus init --config init.yaml <target>
+#
+# PURPOSE
+# -------
+# This file is the authoritative reference for every config key recognized by
+# core/lib/prompt.js. Copy it verbatim, fill in the placeholder values, and
+# run the init command non-interactively — no key reconstruction needed.
+#
+# KEY NAMES ARE AUTHORITATIVE
+# ---------------------------
+# Keys are derived directly from core/lib/prompt.js (2nd argument to
+# askOrConfig / askRequiredOrConfig). Do NOT infer key names from the prompt
+# labels shown in the terminal — they diverge. For example:
+#   terminal label "Short project description (one paragraph)" → key: project_description
+#   terminal label "Roadmap file path"                        → key: roadmap_path
+#   terminal label "Knowledge skill name"                     → key: knowledge_skill
+#
+# OPTIONAL KEYS
+# -------------
+# All keys are optional in the sense that omitting one falls back to the
+# interactive readline prompt for that question. To run fully non-interactively,
+# supply ALL required keys (those backed by askRequiredOrConfig in prompt.js):
+#   project_name, domain_context (if not introspectable), build_command (if not
+#   introspectable), key_directories (if not introspectable), source_directories,
+#   deploy_trigger, review_scope, standards.
+#
+# WIKI LAYOUT KEYS
+# ----------------
+# wiki_layout_* keys are only consulted when --custom-layout is passed or when
+# the init detects non-default sub-directory names under the docs root. In a
+# standard fresh-project init you can omit them; the defaults (wiki/, raw/,
+# adr/, decisions/) are used automatically.
+#
+# Reference: content/skills/hephaestus/references/prompt-classification.yaml
+
+# --- Shells ---
+# Values: "claude-code" | "copilot" | "both"
+shells: "claude-code"
+
+# --- Agents ---
+# Comma-separated subset of agent names, or leave empty ("") to install all.
+# Example: "developer, bug-fixer, reviewer"
+agents: ""
+
+# --- Skills ---
+# Comma-separated list of skill names to install.
+# Available: lore-keeper (and others listed by the init flow).
+# Default when omitted: "lore-keeper"
+skills: "lore-keeper"
+
+# --- Project identity ---
+project_name: "My Project"
+domain_context: "One sentence describing what the project does."
+output_language: "English"
+commit_language: "English"
+
+# --- Knowledge structure ---
+docs_root: "lore"
+roadmap_path: "ROADMAP.md"
+roadmap_format: "milestone-prefixed checkboxes (`## M1 — ...` headings with `- [ ]` / `- [x]` items)"
+knowledge_skill: "lore-keeper"
+
+# --- Wiki layout sub-folder names (only needed with --custom-layout or non-default dirs) ---
+wiki_layout_entries: "wiki"
+wiki_layout_sources: "raw"
+wiki_layout_technical_decisions: "adr"
+wiki_layout_product_decisions: "decisions"
+
+# --- Memory ---
+# Values: "project-local" | "global"
+memory_location: "project-local"
+
+# --- Project description ---
+project_description: "A longer paragraph describing the project for CLAUDE.md."
+architecture_notes: "Brief summary of key design decisions."
+
+# --- Build and deploy ---
+build_command: "npm run build"
+deploy_branch: "main"
+always_exclude: "`node_modules/`, `.env*`, `__pycache__/`, build artifacts, anything matching `.gitignore` patterns"
+deploy_trigger: "Describe how and when a deploy happens (e.g. 'push to main triggers CI/CD pipeline')."
+auto_deploy: "true"
+
+# --- Source layout ---
+key_directories: |
+  - `src/`: main application source
+  - `test/`: automated test suites
+source_directories: "src/"
+
+# --- Tech stack ---
+tech_stack: "Node.js 20+, ESM modules"
+stack_gotchas: "(none recorded yet — fill this in as the project matures and patterns emerge)"
+common_bug_categories: "(none recorded yet)"
+debug_tools: "(none recorded yet)"
+
+# --- Testing ---
+test_runner: "node --test"
+test_helpers: "(not configured yet)"
+test_file_convention: "*.test.js under test/"
+run_command: "(no run command yet)"
+strategy_doc: "(none yet)"
+test_command: "npm test"
+e2e_command: "(no e2e command yet)"
+lint_command: "(no lint command yet)"
+
+# --- Review ---
+review_scope: "Describe what the reviewer agent should focus on (e.g. 'correctness of core/ changes against ADRs')."
+standards: "List docs, ADRs, or style guides to enforce — by path (e.g. 'lore/adr/', '.eslintrc')."
+evidence_style: "Cite internal ADRs, decisions, and wiki articles by path. Reference external sources only when explicitly relevant."

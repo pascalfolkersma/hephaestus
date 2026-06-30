@@ -1,0 +1,310 @@
+# Prompt classification for core/lib/prompt.js
+#
+# One entry per readline prompt. Buckets:
+#   repo-derivable  — answer can be proposed from repo signals alone
+#   hybrid          — repo signals inform a starting proposal; user is expected to refine
+#   user-only       — requires personal user knowledge; Claude stays silent
+#
+# "signals" lists which files / commands to read before proposing.
+# Absent on user-only entries (nothing to read; Claude does not propose).
+#
+# "key" is the EXACT config key consumed by prompt.js (the 2nd argument to
+# askOrConfig / askRequiredOrConfig). This is what an AI must write in an
+# init.yaml file. It is NOT inferred from the prompt label — labels and keys
+# diverge in practice (e.g. label "Short project description (one paragraph)"
+# → key "project_description", NOT "short_project_description").
+#
+# ---------------------------------------------------------------------------
+# Decision 0024 — Hephaestus is a backbone, not a buffet (accepted 2026-05-17)
+#
+# Capability-gate prompts have been retired. The original posture offered
+# opt-out questions for spine pieces (dispatch hook, seed memories, agent
+# conflict strategy). Decision 0024 makes the spine mandatory: the LLM no
+# longer asks "do you want X installed?" — it installs X and asks only about
+# content. Retired entries are preserved below with a # RETIRED annotation
+# so future readers can see what was removed and why.
+# ---------------------------------------------------------------------------
+
+- prompt: "Shell(s) to render"
+  key: shells
+  bucket: user-only
+
+- prompt: "Agents to render"
+  key: agents
+  bucket: user-only
+
+# RETIRED [Decision 0024] — Conflict strategy is no longer a user-configurable
+# toggle; merge/refresh is the mandatory default; skip is a TTY-only emergency
+# escape not available in --config mode. The entry is kept for traceability.
+#
+# - prompt: "Agent conflict strategy (upgrade mode only)"
+#   key: agent_conflict_choice
+#   bucket: repo-derivable
+#   default: proceed
+#   note: "Only relevant in upgrade mode.  Allowed values: proceed (default — refresh agents), skip (preserve existing agents), archive (back up then refresh), abort. Omitting the key uses 'proceed' for --config runs."
+#   signals:
+#     - directory walk [.claude/agents/ — presence of .md files signals upgrade mode]
+
+- prompt: "Skills to install [lore-keeper]"
+  key: skills
+  bucket: user-only
+
+- prompt: "Project name"
+  key: project_name
+  bucket: repo-derivable
+  signals:
+    - package.json [name]
+    - README.md [first H1 heading]
+
+- prompt: "Domain context (one sentence describing what the project is)"
+  key: domain_context
+  bucket: hybrid
+  signals:
+    - README.md [first paragraph after H1]
+    - package.json [description]
+
+- prompt: "Output language"
+  key: output_language
+  bucket: user-only
+
+- prompt: "Commit message language"
+  key: commit_language
+  bucket: user-only
+
+- prompt: "Docs / lore root directory"
+  key: docs_root
+  bucket: repo-derivable
+  signals:
+    - directory walk [look for lore/, docs/, knowledge/ at project root]
+
+- prompt: "Roadmap file path"
+  key: roadmap_path
+  bucket: repo-derivable
+  signals:
+    - directory walk [look for ROADMAP.md, roadmap.md, docs/roadmap.md at project root]
+
+- prompt: "Roadmap format"
+  key: roadmap_format
+  bucket: repo-derivable
+  signals:
+    - ROADMAP.md [inspect heading and checkbox pattern on first 20 lines]
+
+- prompt: "Knowledge skill name"
+  key: knowledge_skill
+  bucket: repo-derivable
+  signals:
+    - directory walk [.claude/skills/ — first skill folder name found, or lore-keeper default]
+
+- prompt: "Compiled articles sub-dir (entries)"
+  key: wiki_layout_entries
+  bucket: repo-derivable
+  signals:
+    - directory walk [existing sub-dirs under lore/ or docs/]
+
+- prompt: "Raw sources sub-dir (sources)"
+  key: wiki_layout_sources
+  bucket: repo-derivable
+  signals:
+    - directory walk [existing sub-dirs under lore/ or docs/]
+
+- prompt: "Technical decisions sub-dir (technical_decisions)"
+  key: wiki_layout_technical_decisions
+  bucket: repo-derivable
+  signals:
+    - directory walk [existing sub-dirs under lore/ or docs/]
+
+- prompt: "Product decisions sub-dir (product_decisions)"
+  key: wiki_layout_product_decisions
+  bucket: repo-derivable
+  signals:
+    - directory walk [existing sub-dirs under lore/ or docs/]
+
+- prompt: "Memory location"
+  key: memory_location
+  bucket: user-only
+
+# RETIRED [Decision 0024] — Seed memories are part of the mandatory spine;
+# the init flow always seeds memories for project-local installs. Asking
+# "do you want this?" contradicts the backbone posture.
+#
+# - prompt: "Copy seed memories (orchestrator pattern + agent workflow)?"
+#   bucket: user-only
+
+# RETIRED [Decision 0024] — Dispatch-enforcement hook is a mandatory spine
+# piece; it is always installed. The option to skip it is removed per the
+# backbone posture. The hook wires dispatch enforcement from session one.
+#
+# - prompt: "Install dispatch-enforcement hook?"
+#   bucket: user-only
+
+- prompt: "Short project description (one paragraph)"
+  key: project_description
+  bucket: hybrid
+  signals:
+    - README.md [first paragraph after H1]
+    - package.json [description]
+
+- prompt: "Architecture notes (brief summary of key design decisions)"
+  key: architecture_notes
+  bucket: hybrid
+  signals:
+    - README.md [##Architecture or ##Design section]
+    - package.json
+    - git log --oneline -10
+
+- prompt: "Build command"
+  key: build_command
+  bucket: repo-derivable
+  signals:
+    - package.json [scripts.build]
+    - Makefile [build target]
+
+- prompt: "Deploy branch"
+  key: deploy_branch
+  bucket: repo-derivable
+  signals:
+    - git branch --show-current
+    - package.json [scripts.deploy — look for branch references]
+
+- prompt: "Always exclude (gitignore-style patterns)"
+  key: always_exclude
+  bucket: repo-derivable
+  signals:
+    - .gitignore
+    - .npmignore
+
+- prompt: "Deploy trigger (how/when does a deploy happen)"
+  key: deploy_trigger
+  bucket: hybrid
+  signals:
+    - README.md [##Deploy or ##Release section]
+    - .github/workflows/ [look for push-triggered workflow files]
+    - package.json [scripts.deploy or scripts.release]
+
+- prompt: "Auto-deploy enabled"
+  key: auto_deploy
+  bucket: repo-derivable
+  signals:
+    - .github/workflows/ [look for on.push triggers]
+    - package.json [scripts.deploy]
+
+- prompt: "Key directories (short description per dir, backtick-quoted)"
+  key: key_directories
+  bucket: hybrid
+  signals:
+    - directory walk [top-level directories, README.md first line per dir if present]
+    - README.md [##Structure or ##Folder or ##Layout section]
+
+- prompt: "Source directories (the ones agents should read/edit)"
+  key: source_directories
+  bucket: repo-derivable
+  signals:
+    - package.json [main, module, files, src field or scripts referencing a dir]
+    - directory walk [src/, lib/, app/, core/ — common source roots]
+    - README.md [##Structure or ##Folder section]
+
+- prompt: "Tech stack (language, runtime, major libs)"
+  key: tech_stack
+  bucket: repo-derivable
+  signals:
+    - package.json [dependencies, devDependencies, engines]
+    - pyproject.toml [tool.poetry.dependencies or project.dependencies]
+    - go.mod [module, require]
+    - Gemfile
+
+- prompt: "Stack gotchas"
+  key: stack_gotchas
+  bucket: hybrid
+  signals:
+    - README.md [##Gotchas or ##Notes or ##Caveats section]
+    - git log --oneline -20 [look for recurring fix/workaround commit messages]
+
+- prompt: "Common bug categories"
+  key: common_bug_categories
+  bucket: hybrid
+  signals:
+    - "git log --oneline -30 [look for fix: prefixed commits or recurring issue patterns]"
+
+- prompt: "Debug tools"
+  key: debug_tools
+  bucket: repo-derivable
+  signals:
+    - package.json [scripts — look for debug, inspect, log-level scripts]
+    - README.md [##Debugging or ##Development section]
+
+- prompt: "Test runner"
+  key: test_runner
+  bucket: repo-derivable
+  signals:
+    - package.json [scripts.test, devDependencies — jest, vitest, mocha, tap, etc.]
+    - pyproject.toml [tool.pytest.ini_options]
+
+- prompt: "Test helpers"
+  key: test_helpers
+  bucket: repo-derivable
+  signals:
+    - package.json [devDependencies — sinon, nock, supertest, testing-library, etc.]
+
+- prompt: "Test file convention"
+  key: test_file_convention
+  bucket: repo-derivable
+  signals:
+    - directory walk [look for __tests__/, test/, spec/ directories or *.test.js / *.spec.js patterns]
+    - package.json [jest.testMatch or vitest.include]
+
+# NOTE: The actual prompt label in prompt.js is "Run command" (key: run_command).
+# The label "Test run command" used in the previous version of this file was incorrect.
+- prompt: "Run command"
+  key: run_command
+  bucket: repo-derivable
+  signals:
+    - package.json [scripts.test]
+
+- prompt: "Testing strategy doc path"
+  key: strategy_doc
+  bucket: repo-derivable
+  signals:
+    - directory walk [look for docs/testing.md, TESTING.md, lore/wiki/testing/]
+
+- prompt: "Test command (CLAUDE.md banner)"
+  key: test_command
+  bucket: repo-derivable
+  signals:
+    - package.json [scripts.test]
+
+- prompt: "E2E test command"
+  key: e2e_command
+  bucket: repo-derivable
+  signals:
+    - package.json [scripts.e2e, scripts.test:e2e, scripts.cypress, scripts.playwright]
+    - .github/workflows/ [look for e2e or browser-test steps]
+
+- prompt: "Lint command"
+  key: lint_command
+  bucket: repo-derivable
+  signals:
+    - package.json [scripts.lint]
+    - .eslintrc [presence]
+    - pyproject.toml [tool.ruff presence]
+
+- prompt: "Review scope (what the reviewer agent focuses on)"
+  key: review_scope
+  bucket: hybrid
+  signals:
+    - README.md
+    - AGENTS.md
+    - git log --oneline -20
+
+- prompt: "Standards to enforce (docs, ADRs, style guides — by path)"
+  key: standards
+  bucket: hybrid
+  signals:
+    - .eslintrc
+    - .prettierrc
+    - pyproject.toml [tool.ruff]
+    - README.md [##Contributing section]
+    - lore/adr/ [list ADR filenames]
+
+- prompt: "Evidence style"
+  key: evidence_style
+  bucket: user-only

@@ -1,0 +1,5 @@
+# Normalize all text files to LF in the repository and in the working tree.
+# This prevents line-ending churn on Windows where git core.autocrlf=true
+# would otherwise convert LF → CRLF on checkout, causing perpetual diffs
+# for files that Hephaestus always writes with LF (e.g. rendered agent files).
+* text=auto eol=lf
