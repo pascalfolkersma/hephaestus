@@ -7,6 +7,12 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// Repo-root anchor for every spawned hook and every helper-constructed path in this
+// file (session context, side-channel, temp docs-root). Hooks resolve paths against
+// process.cwd(), so spawnSync calls must pin cwd here too — otherwise the suite would
+// silently depend on the launch directory (M12.31).
+const REPO_ROOT = resolve(__dirname, '../..');
+
 const COPILOT_HOOK    = resolve(__dirname, '../../content/.copilot-template/hooks/dispatch-enforce.js');
 const TRACKER_HOOK    = resolve(__dirname, '../../content/.copilot-template/hooks/subagent-tracker.js');
 // Side-channel and flows paths use the Copilot state root (.github/) per ADR 0039 §4–§5 / M12.9.
@@ -30,6 +36,7 @@ const FLOWS_DIR       = resolve(__dirname, '../../.github/flows');
 function runHook({ stdin = '', env = {} } = {}) {
   const result = spawnSync('node', [COPILOT_HOOK], {
     input: stdin,
+    cwd: REPO_ROOT,
     env: {
       ...process.env,
       ...env,
@@ -50,6 +57,7 @@ function runHook({ stdin = '', env = {} } = {}) {
 function runTracker({ stdin = '', env = {} } = {}) {
   const result = spawnSync('node', [TRACKER_HOOK], {
     input: stdin,
+    cwd: REPO_ROOT,
     env: { ...process.env, ...env },
     encoding: 'utf8',
   });
@@ -1259,7 +1267,8 @@ describe('M12.4 — scope-gate: all three dispatch names intercepted when subage
   // absolute path would produce a broken joined path on Windows.  We create the temp
   // dir under the repo root and pass only the relative segment.
   function assertScopeGateDenies(toolName, sessionId) {
-    const REPO_ROOT = resolve(__dirname, '../..');
+    // REPO_ROOT is the module-level constant defined near the top of this file —
+    // reused here rather than redefined, so there is one source of truth (M12.31).
     // Use a relative path for HEPHAESTUS_DOCS_ROOT so the hook's
     // path.join(process.cwd(), docsRoot, 'decisions') resolves correctly.
     const relTempDocsRoot = join('test', `.scope-gate-tmp-${sessionId}`);

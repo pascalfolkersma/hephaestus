@@ -58,6 +58,11 @@ __pycache__/
 *.pyc
 *.pyo
 
+# Per-session temp docs-root created by the M12.4 scope-gate tests
+# (test/hooks/copilot-dispatch-enforce.test.js). Removed in a finally block, but a
+# killed process or a Windows file-lock can leave one behind (M12.31).
+test/.scope-gate-tmp-*/
+
 # Build-sync staging artifacts for the hephaestus skill full-bundle (ADR 0029 §6).
 # `npm run build` copies core/ and content/ here as an intermediate step; the result
 # is then carried into dist/skills/hephaestus/ by the build.  These sub-trees must NOT
