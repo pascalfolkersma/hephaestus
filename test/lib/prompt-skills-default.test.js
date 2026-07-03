@@ -8,6 +8,11 @@
 // api-contract-tester) — and any other skill under content/skills/ — must NOT
 // appear in that default; a user has to explicitly type them to opt in.
 //
+// M14.1-M14.4 (Decision 0048): the same opt-in rule applies to the four new
+// owned cross-agent workflow skills (codebase-introspection, roadmap-parser,
+// contract-validator, dispatch-decision-tree) — they must not appear in the
+// default selection either.
+//
 // Test strategy / seam choice:
 //   prompt() is directly importable and accepts a stub `iface` object with a
 //   `question()` method (see test/lib/prompt-wiki-layout.test.js for the same
@@ -114,6 +119,20 @@ describe('prompt — skills default selection is opt-in only (M14.9 / Decision 0
       assert.ok(
         !ctx.skills.includes(name),
         `Default skill selection must not include "${name}" — new domain skills are opt-in, not auto-selected.`,
+      );
+    }
+  });
+
+  test('none of the four new cross-agent workflow skills are present in the default selection', async () => {
+    const detectionResult = { type: 'greenfield', signals: [], upgradeSignals: [], detectedSubDirs: [], resolvedDocsRoot: 'lore' };
+    const iface = makeIface(greenfieldAnswersDefaultSkills());
+
+    const ctx = await prompt(detectionResult, null, iface, {});
+
+    for (const name of ['codebase-introspection', 'roadmap-parser', 'contract-validator', 'dispatch-decision-tree']) {
+      assert.ok(
+        !ctx.skills.includes(name),
+        `Default skill selection must not include "${name}" — new cross-agent workflow skills are opt-in, not auto-selected.`,
       );
     }
   });

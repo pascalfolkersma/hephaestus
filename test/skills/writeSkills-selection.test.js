@@ -2,6 +2,11 @@
 // a selected skill is written in full; an unselected skill produces no output
 // at all.
 //
+// M14.1-M14.4 (Decision 0048): four new owned cross-agent workflow skills
+// (codebase-introspection, roadmap-parser, contract-validator,
+// dispatch-decision-tree) are covered by the same selected/unselected
+// contract further below.
+//
 // Fixture/conflict-handler setup mirrors test/skills/hephaestus-self-install-guard.test.js
 // (makeNoopConflictHandler + a minimal claude-code shell mapping supplying
 // skills_dir), reused here rather than inventing a new harness. This file
@@ -177,5 +182,78 @@ describe('writeSkills — an unselected skill produces no output at all (M14.10)
     assert.equal(written.length, 0, 'conflictHandler must never be called with an empty skills selection');
     assert.ok(!existsSync(join(dir, '.claude', 'skills')), '.claude/skills/ must not be created at all');
     assert.deepEqual(result, { written: [], skipped: [] });
+  });
+});
+
+describe('writeSkills — a selected new cross-agent workflow skill is written in full (M14.1-M14.4)', () => {
+  test('skills: [codebase-introspection] writes SKILL.md and LICENSE under .claude/skills/codebase-introspection/', async () => {
+    const dir = makeTemp();
+    const written = [];
+    const conflictHandler = makeNoopConflictHandler(written);
+
+    await writeSkills(
+      dir,
+      {
+        skills: ['codebase-introspection'],
+        shellMappings: { 'claude-code': CLAUDE_CODE_MAPPING },
+      },
+      conflictHandler,
+    );
+
+    const skillMd = join(dir, '.claude', 'skills', 'codebase-introspection', 'SKILL.md');
+    const license = join(dir, '.claude', 'skills', 'codebase-introspection', 'LICENSE');
+    assert.ok(existsSync(skillMd), 'codebase-introspection/SKILL.md must be written when selected');
+    assert.ok(existsSync(license), 'codebase-introspection/LICENSE must be written when selected');
+
+    const content = readFileSync(skillMd, 'utf8');
+    assert.match(content, /name:\s*codebase-introspection/, 'written SKILL.md must carry the correct frontmatter name');
+  });
+});
+
+describe('writeSkills — an unselected new cross-agent workflow skill produces no output at all (M14.1-M14.4)', () => {
+  test('skills: [lore-keeper] does NOT write anything under .claude/skills/codebase-introspection/', async () => {
+    const dir = makeTemp();
+    const written = [];
+    const conflictHandler = makeNoopConflictHandler(written);
+
+    await writeSkills(
+      dir,
+      {
+        skills: ['lore-keeper'],
+        shellMappings: { 'claude-code': CLAUDE_CODE_MAPPING },
+      },
+      conflictHandler,
+    );
+
+    assert.ok(
+      !existsSync(join(dir, '.claude', 'skills', 'codebase-introspection')),
+      'codebase-introspection/ must not exist when it was not in ctx.skills',
+    );
+    assert.ok(
+      written.every((p) => !p.includes('codebase-introspection')),
+      'conflictHandler must never be called for an unselected skill',
+    );
+  });
+
+  test('skills: [codebase-introspection] does NOT write the other three new workflow skills', async () => {
+    const dir = makeTemp();
+    const written = [];
+    const conflictHandler = makeNoopConflictHandler(written);
+
+    await writeSkills(
+      dir,
+      {
+        skills: ['codebase-introspection'],
+        shellMappings: { 'claude-code': CLAUDE_CODE_MAPPING },
+      },
+      conflictHandler,
+    );
+
+    for (const skillName of ['roadmap-parser', 'contract-validator', 'dispatch-decision-tree']) {
+      assert.ok(
+        !existsSync(join(dir, '.claude', 'skills', skillName)),
+        `${skillName}/ must not exist when only codebase-introspection was selected`,
+      );
+    }
   });
 });

@@ -24,9 +24,11 @@
 // M14.5-M14.8 (Decision 0048): four new native domain skills were added
 // (react-component-author, sql-migration-writer, github-actions-author,
 // api-contract-tester), and content/skills/design-sync/LICENSE was folded in
-// as a missing-license fix. scripts/build.js's `ownedSkills` array now lists
-// six entries; LS9 below asserts byte-equality against the root LICENSE for
-// all six, in both content/skills/ and dist/skills/, mirroring LS4/LS1.
+// as a missing-license fix. M14.1-M14.4 then added four owned cross-agent
+// workflow skills (codebase-introspection, roadmap-parser, contract-validator,
+// dispatch-decision-tree). scripts/build.js's `ownedSkills` array now lists
+// ten entries; LS9 below asserts byte-equality against the root LICENSE for
+// all ten, in both content/skills/ and dist/skills/, mirroring LS4/LS1.
 //
 // Runner: node:test (built-in, no extra deps).
 
@@ -248,6 +250,10 @@ const OWNED_SKILLS = [
   'github-actions-author',
   'api-contract-tester',
   'design-sync',
+  'codebase-introspection',
+  'roadmap-parser',
+  'contract-validator',
+  'dispatch-decision-tree',
 ];
 
 describe('M14 license-sync — all owned skills carry a byte-identical root LICENSE (LS9)', () => {

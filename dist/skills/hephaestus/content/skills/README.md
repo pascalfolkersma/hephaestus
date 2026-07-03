@@ -34,6 +34,15 @@ The init flow handles the copy; no per-shell variants exist for the same skill.
 - `github-actions-author` — workflow YAML structure, secrets usage, caching, and reusable-workflow (`workflow_call`) conventions. Provider-agnostic, native.
 - `api-contract-tester` — request/response shape, status-code, and schema-assertion conventions for API contract tests. Native.
 
+### Cross-agent workflow skills
+
+Skills that codify a shared convention or process used by multiple Hephaestus agents, rather than a target-project domain (Decision 0049).
+
+- `codebase-introspection` — package.json, dependency, and directory-walk conventions shared by developer, bug-fixer, sync-check. Native.
+- `roadmap-parser` — canonical ROADMAP.md reading conventions (WBS IDs, wave markers) for orchestrator, sync-check. Native.
+- `contract-validator` — ADR 0006 agent-definition completeness rules as a reusable pre-flight check for developer, reviewer. Native.
+- `dispatch-decision-tree` — the CLAUDE.md dispatch policy table as a queryable skill for orchestrator, git-commit-push. Native.
+
 All skills except `lore-keeper` are Hephaestus-native (owned) and ship a `LICENSE` tracking the root `LICENSE` verbatim, kept in sync by the `ownedSkills` license-sync step in `scripts/build.js` (Decision 0035). `lore-keeper` retains its upstream license per its `UPSTREAM.md`.
 
 ## Status

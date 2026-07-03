@@ -77,6 +77,10 @@ await mkdir(distDir, { recursive: true });
     resolve(repoRoot, 'content', 'skills', 'github-actions-author', 'LICENSE'),
     resolve(repoRoot, 'content', 'skills', 'api-contract-tester', 'LICENSE'),
     resolve(repoRoot, 'content', 'skills', 'design-sync', 'LICENSE'),
+    resolve(repoRoot, 'content', 'skills', 'codebase-introspection', 'LICENSE'),
+    resolve(repoRoot, 'content', 'skills', 'roadmap-parser', 'LICENSE'),
+    resolve(repoRoot, 'content', 'skills', 'contract-validator', 'LICENSE'),
+    resolve(repoRoot, 'content', 'skills', 'dispatch-decision-tree', 'LICENSE'),
   ];
 
   for (const dest of ownedSkills) {
