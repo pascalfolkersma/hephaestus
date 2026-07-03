@@ -72,13 +72,18 @@ await mkdir(distDir, { recursive: true });
   // Skills that track the root LICENSE verbatim (add here when a new owned skill is added).
   const ownedSkills = [
     resolve(repoRoot, 'content', 'skills', 'hephaestus', 'LICENSE'),
+    resolve(repoRoot, 'content', 'skills', 'react-component-author', 'LICENSE'),
+    resolve(repoRoot, 'content', 'skills', 'sql-migration-writer', 'LICENSE'),
+    resolve(repoRoot, 'content', 'skills', 'github-actions-author', 'LICENSE'),
+    resolve(repoRoot, 'content', 'skills', 'api-contract-tester', 'LICENSE'),
+    resolve(repoRoot, 'content', 'skills', 'design-sync', 'LICENSE'),
   ];
 
   for (const dest of ownedSkills) {
     await writeFile(dest, rootLicense, 'utf8');
   }
 
-  console.log('license-sync: content/skills/hephaestus/LICENSE refreshed from root LICENSE');
+  console.log(`license-sync: ${ownedSkills.length} owned-skill LICENSE files refreshed from root LICENSE`);
 }
 
 // ── Build-sync: populate full-bundle inside content/skills/hephaestus/ ────────

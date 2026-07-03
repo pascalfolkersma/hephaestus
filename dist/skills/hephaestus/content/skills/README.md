@@ -24,12 +24,18 @@ Unlike agents, skills are **not transformed per shell**. They are copied as-is t
 
 The init flow handles the copy; no per-shell variants exist for the same skill.
 
-## Planned skills
+## Shipped skills
 
-Per ROADMAP M4, these will be bundled:
+- `hephaestus` — the bootstrap init-orchestrator skill; bundles the full `core/` + `content/` tree for the two-phase npx distribution flow (ADR 0028/0029).
+- `lore-keeper` — knowledge base management (upstream-derived from `karpathy-llm-wiki`; see its `UPSTREAM.md`).
+- `design-sync` — Flow 6 (Claude Design ingest) prelude; native, Hephaestus-only.
+- `react-component-author` — functional-component, hooks, prop-typing, and co-located test conventions for React/Next.js target projects. Native.
+- `sql-migration-writer` — naming, reversible up/down, and idempotency/safety conventions for SQL schema migrations. Native.
+- `github-actions-author` — workflow YAML structure, secrets usage, caching, and reusable-workflow (`workflow_call`) conventions. Provider-agnostic, native.
+- `api-contract-tester` — request/response shape, status-code, and schema-assertion conventions for API contract tests. Native.
 
-- `lore-keeper` — knowledge base management (already exists, copy from upstream)
+All skills except `lore-keeper` are Hephaestus-native (owned) and ship a `LICENSE` tracking the root `LICENSE` verbatim, kept in sync by the `ownedSkills` license-sync step in `scripts/build.js` (Decision 0035). `lore-keeper` retains its upstream license per its `UPSTREAM.md`.
 
 ## Status
 
-Empty. Skills can be added as the ecosystem matures or as user need arises.
+Skills are selected during init via an opt-in checkbox prompt (defaulting to `lore-keeper` only); every folder under `content/skills/<name>/` containing a `SKILL.md` is auto-discovered and offered. New skills can be added as the ecosystem matures or as user need arises.

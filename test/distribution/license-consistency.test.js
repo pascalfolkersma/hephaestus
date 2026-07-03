@@ -21,6 +21,13 @@
 //   LS6  content/skills/lore-keeper/LICENSE       — MIT + Yuhan Lei (sync must not touch it)
 //   LS8  dist/.../content/skills/lore-keeper/LICENSE  — MIT + Yuhan Lei (nested bundle copy)
 //
+// M14.5-M14.8 (Decision 0048): four new native domain skills were added
+// (react-component-author, sql-migration-writer, github-actions-author,
+// api-contract-tester), and content/skills/design-sync/LICENSE was folded in
+// as a missing-license fix. scripts/build.js's `ownedSkills` array now lists
+// six entries; LS9 below asserts byte-equality against the root LICENSE for
+// all six, in both content/skills/ and dist/skills/, mirroring LS4/LS1.
+//
 // Runner: node:test (built-in, no extra deps).
 
 import { test, describe } from 'node:test';
@@ -222,4 +229,65 @@ describe('M6 license-sync — nested bundle dist/.../content/skills/lore-keeper/
       'its presence here means the exclusion must also apply to the nested bundle copy in build.js.',
     );
   });
+});
+
+// ---------------------------------------------------------------------------
+// LS9 — all six owned skills (M14.5-M14.8 / Decision 0048): each
+// content/skills/<name>/LICENSE and dist/skills/<name>/LICENSE is
+// byte-for-byte identical to the root LICENSE.
+//
+// This list mirrors scripts/build.js's `ownedSkills` array. If a new owned
+// skill is added there without a matching entry here, this list has drifted —
+// keep both in sync.
+// ---------------------------------------------------------------------------
+
+const OWNED_SKILLS = [
+  'hephaestus',
+  'react-component-author',
+  'sql-migration-writer',
+  'github-actions-author',
+  'api-contract-tester',
+  'design-sync',
+];
+
+describe('M14 license-sync — all owned skills carry a byte-identical root LICENSE (LS9)', () => {
+  for (const skillName of OWNED_SKILLS) {
+    const contentRelPath = `content/skills/${skillName}/LICENSE`;
+    const distRelPath = `dist/skills/${skillName}/LICENSE`;
+
+    test(`content/skills/${skillName}/LICENSE exists`, () => {
+      assert.ok(
+        existsSync(resolve(REPO_ROOT, contentRelPath)),
+        `${contentRelPath} must exist`,
+      );
+    });
+
+    test(`content/skills/${skillName}/LICENSE is text-identical to root LICENSE`, () => {
+      assert.equal(
+        read(contentRelPath),
+        rootLicense,
+        `${contentRelPath} must be text-identical to the root LICENSE — ` +
+        'the license-sync step copies the root LICENSE into every owned-skill bundle at build time. ' +
+        'If they differ, the sync step has not run, or the skill is missing from ownedSkills in build.js. ' +
+        'Run "npm run build".',
+      );
+    });
+
+    test(`dist/skills/${skillName}/LICENSE exists`, () => {
+      assert.ok(
+        existsSync(resolve(REPO_ROOT, distRelPath)),
+        `${distRelPath} must exist — run "npm run build" to regenerate dist/`,
+      );
+    });
+
+    test(`dist/skills/${skillName}/LICENSE is text-identical to root LICENSE`, () => {
+      assert.equal(
+        read(distRelPath),
+        rootLicense,
+        `${distRelPath} must be text-identical to the root LICENSE — ` +
+        'the content/skills/ -> dist/skills/ copy step must carry the synced LICENSE through unchanged. ' +
+        'Run "npm run build".',
+      );
+    });
+  }
 });
