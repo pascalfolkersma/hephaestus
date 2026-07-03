@@ -1,21 +1,31 @@
 // flow5-sequence.js — mechanical steps for the flow-5 release flow.
 //
 // Governing specs:
-//   - ADR 0044 §3 — the canonical 9-step execution sequence
+//   - ADR 0044 §3 — the original canonical 9-step execution sequence
+//   - ADR 0044 §8 (Amendment) — the eleven-step sequence: adds step 6a
+//     (CHANGELOG draft) and step 6b (CHANGELOG guard) between the
+//     confirmation prompt (step 6) and `npm version` (step 7)
 //   - Decision 0038 — the product decision that defines flow 5
+//   - Decision 0041 — CHANGELOG.md is authored inside flow 5 by
+//     idea-architect, guarded (realized by ADR 0044 §8)
 //
 // Architecture note (ADR 0044 §3):
 //   Flow 5 is "a new MAIN-THREAD flow sequence, NOT inside any agent body."
 //   This module encodes the mechanical steps of that sequence as a testable
-//   unit. The interactive / agent steps (sync-check, confirmation prompt) are
-//   injected as callbacks so the module can be exercised in tests without
-//   spawning real processes, mutating package.json, or pushing to a remote.
+//   unit. The interactive / agent steps (sync-check, CHANGELOG draft,
+//   confirmation prompt) are injected as callbacks so the module can be
+//   exercised in tests without spawning real processes, mutating
+//   package.json, or pushing to a remote.
 //
 // The agent steps that the MAIN THREAD must perform around this module:
 //   - Before calling runFlow5(): write {"flow":5,...} to context.json.
 //   - Step 4 (sync-check): the main thread dispatches @agent-sync-check;
 //     inject its outcome via the `runSyncCheck` dep. The module does NOT
 //     try to spawn an agent from Node.js — that separation is load-bearing.
+//   - Step 6a (CHANGELOG draft): the main thread dispatches
+//     @agent-idea-architect to write the CHANGELOG.md entry; inject its
+//     completion via the `runChangelogDraft` dep. Same separation applies —
+//     the module never spawns an agent itself.
 //
 // OQ3 resolution (Decision 0038 OQ3 / ADR 0044 OQ3):
 //   Step 7a (`npm publish --dry-run` against the tagged state) is OMITTED.
@@ -23,10 +33,22 @@
 //   build (step 2) and test (step 3) already verify local buildability, and
 //   the ADR 0035 §6 pre-publish checklist covers tarball-shape verification
 //   as a manual step. Relying on build+test is option (c) from ADR 0044 OQ3.
-//   Total step count remains 9 (not 10).
+//
+// Commit-folding resolution (ADR 0044 §8.2 — M15.9):
+//   Option (a) — pre-`npm version` commit — was chosen over option (b) — an
+//   npm `version` lifecycle script (`git add CHANGELOG.md`). Rationale:
+//   `npm version` checks that the working tree is clean *before* any
+//   lifecycle script runs (preversion/version/postversion), so a
+//   `"version": "git add CHANGELOG.md"` script would never get a chance to
+//   run — `npm version` would already have aborted on the dirty CHANGELOG.md
+//   left behind by step 6a. A pre-commit (`docs: update CHANGELOG for
+//   v<nextVersion>`) is the only approach that leaves a clean tree for
+//   `npm version` to bump. Its subject uses a non-bumping `docs:` prefix so
+//   it does not skew the *next* release's `analyzeBump()` run (ADR 0044 §8.2
+//   note).
 
 import { execSync } from 'node:child_process';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { analyzeBump } from './release-bump.js';
 
@@ -87,6 +109,83 @@ async function defaultRunSyncCheck(_cwd) {
  */
 function defaultAnalyze(cwd) {
   return analyzeBump({ cwd });
+}
+
+/**
+ * Default commit-range reader: resolves the most recent v*.*.* tag and
+ * returns the raw `git log <lastTag>..HEAD` text for that range. This is the
+ * input handed to the CHANGELOG-draft callback (step 6a) alongside
+ * `nextVersion` — it resolves the same last-`v*.*.*` tag boundary that
+ * `analyzeBump()` uses, but returns the full `git log` output (not
+ * `analyzeBump()`'s `--format=%s%n%b` subject+body format), since the
+ * CHANGELOG draft needs the fuller commit context.
+ *
+ * @param {string} cwd
+ * @returns {string} raw `git log` output for the range
+ */
+function defaultGetCommitRange(cwd) {
+  let lastTag;
+  try {
+    lastTag = execSync('git describe --tags --match "v*.*.*" --abbrev=0', { cwd, encoding: 'utf8' }).trim();
+  } catch (err) {
+    throw new Error(
+      `[flow5-sequence] Could not determine last release tag for the CHANGELOG draft: ${err.message}`,
+    );
+  }
+  return execSync(`git log ${lastTag}..HEAD`, { cwd, encoding: 'utf8' });
+}
+
+/**
+ * Default CHANGELOG-draft runner.
+ *
+ * In the live flow this step is an @agent-idea-architect dispatch performed
+ * by the main thread, writing the CHANGELOG.md entry for `nextVersion` from
+ * the given commit range. This module exposes a clean seam
+ * ("runChangelogDraft") so that:
+ *   (a) tests can inject a fake draft step without spawning an agent, and
+ *   (b) the main thread can call runFlow5() after idea-architect has already
+ *       been dispatched, by injecting a pre-resolved callback.
+ *
+ * The default implementation throws a descriptive error — mirroring
+ * `defaultRunSyncCheck` — to make it obvious that the live-flow caller must
+ * inject the CHANGELOG-draft step rather than letting this default run.
+ *
+ * @param {{ nextVersion: string, commitRange: string, cwd: string }} _input
+ * @returns {Promise<void>}
+ */
+async function defaultRunChangelogDraft(_input) {
+  throw new Error(
+    '[flow5-sequence] No CHANGELOG-draft runner injected. ' +
+    'In the live flow the main thread dispatches @agent-idea-architect to write the ' +
+    'CHANGELOG.md entry and passes completion via the `runChangelogDraft` dep. ' +
+    'In tests, inject: runChangelogDraft: async () => {}.',
+  );
+}
+
+/**
+ * Default CHANGELOG reader: reads CHANGELOG.md from cwd for the step-6b guard.
+ *
+ * @param {string} cwd
+ * @returns {string} file content
+ */
+function defaultReadChangelog(cwd) {
+  return readFileSync(join(cwd, 'CHANGELOG.md'), 'utf8');
+}
+
+/**
+ * Default CHANGELOG-commit runner: commits the CHANGELOG.md edit made in
+ * step 6a as its own commit, ahead of the `npm version` bump commit.
+ *
+ * Commit-folding resolution (ADR 0044 §8.2 — option a). See module header
+ * comment for the rationale. The subject uses a non-bumping `docs:` prefix
+ * so this commit does not skew the *next* release's `analyzeBump()` run.
+ *
+ * @param {string} nextVersion — bare semver string, e.g. "0.14.0"
+ * @param {string} cwd
+ */
+function defaultCommitChangelog(nextVersion, cwd) {
+  execSync('git add CHANGELOG.md', { cwd, stdio: 'inherit' });
+  execSync(`git commit -m "docs: update CHANGELOG for v${nextVersion}"`, { cwd, stdio: 'inherit' });
 }
 
 /**
@@ -195,9 +294,9 @@ function defaultWriteDoneMarker(sessionId, cwd) {
 // ---------------------------------------------------------------------------
 
 /**
- * Run the flow-5 release sequence (ADR 0044 §3).
+ * Run the flow-5 release sequence (ADR 0044 §3, amended by §8).
  *
- * Steps (matching ADR 0044 §3 ordering):
+ * Steps (matching ADR 0044 §8.1 eleven-step ordering):
  *   1.  context.json has already been updated to {"flow":5,...} by the caller
  *       before invoking this function. This function does NOT write context.json —
  *       that is a main-thread responsibility (the caller writes it before the
@@ -207,22 +306,33 @@ function defaultWriteDoneMarker(sessionId, cwd) {
  *   4.  sync-check gate           — abort when runSyncCheck() returns { ok: false }
  *   5.  analyzeBump()             — derive next version string + summary
  *   6.  confirmation prompt       — show analysis, ask Y/n; abort on N (default Y)
+ *   6a. CHANGELOG draft           — runChangelogDraft({ nextVersion, commitRange, cwd });
+ *       the main thread dispatches @agent-idea-architect; this module never
+ *       spawns an agent itself (same pattern as step 4 / runSyncCheck).
+ *   6b. CHANGELOG guard           — abort cleanly when CHANGELOG.md does not
+ *       contain a line matching nextVersion; on pass, commit the CHANGELOG.md
+ *       edit ahead of the version bump (commit-folding option (a), ADR 0044 §8.2).
  *   7.  npm version <derived>     — creates bump commit + local tag
  *       OQ3: no `npm publish --dry-run` before the push. See module-level comment.
  *   8.  git push --follow-tags    — pushes commit + tag; triggers CI workflow
  *   9.  write done-marker         — .claude/flows/<sessionId>/done
  *
  * @param {object} [deps] — injectable dependencies for testing and live operation
- * @param {string}   [deps.cwd]            — working directory (default: process.cwd())
- * @param {string}   [deps.sessionId]      — session id used for the done-marker path
- * @param {Function} [deps.runBuild]       — (cwd) → void; throws on failure
- * @param {Function} [deps.runTests]       — (cwd) → void; throws on failure
- * @param {Function} [deps.runSyncCheck]   — async (cwd) → { ok: boolean, reason?: string }
- * @param {Function} [deps.analyze]        — (cwd) → AnalysisResult; throws on failure
- * @param {Function} [deps.confirm]        — async (analysis) → boolean
- * @param {Function} [deps.runNpmVersion]  — (version, cwd) → void; throws on failure
- * @param {Function} [deps.gitPush]        — (cwd) → void; throws on failure
- * @param {Function} [deps.writeDoneMarker]— (sessionId, cwd) → void
+ * @param {string}   [deps.cwd]              — working directory (default: process.cwd())
+ * @param {string}   [deps.sessionId]        — session id used for the done-marker path
+ * @param {Function} [deps.runBuild]         — (cwd) → void; throws on failure
+ * @param {Function} [deps.runTests]         — (cwd) → void; throws on failure
+ * @param {Function} [deps.runSyncCheck]     — async (cwd) → { ok: boolean, reason?: string }
+ * @param {Function} [deps.analyze]          — (cwd) → AnalysisResult; throws on failure
+ * @param {Function} [deps.confirm]          — async (analysis) → boolean
+ * @param {Function} [deps.getCommitRange]   — (cwd) → string; raw `git log <lastTag>..HEAD` text; throws on failure
+ * @param {Function} [deps.runChangelogDraft]— async ({ nextVersion, commitRange, cwd }) → void; throws on failure.
+ *   The main thread injects this after dispatching @agent-idea-architect; the module never spawns the agent itself.
+ * @param {Function} [deps.readChangelog]    — (cwd) → string; reads CHANGELOG.md content for the step-6b guard; throws when missing
+ * @param {Function} [deps.commitChangelog]  — (nextVersion, cwd) → void; commits the CHANGELOG.md edit ahead of `npm version`; throws on failure
+ * @param {Function} [deps.runNpmVersion]    — (version, cwd) → void; throws on failure
+ * @param {Function} [deps.gitPush]          — (cwd) → void; throws on failure
+ * @param {Function} [deps.writeDoneMarker]  — (sessionId, cwd) → void
  *
  * @returns {Promise<{
  *   released: boolean,
@@ -234,16 +344,20 @@ function defaultWriteDoneMarker(sessionId, cwd) {
  *   version:  the tagged version string (e.g. "0.14.0"), or null when not released.
  */
 export async function runFlow5({
-  cwd           = process.cwd(),
-  sessionId     = '',
-  runBuild      = defaultRunBuild,
-  runTests      = defaultRunTests,
-  runSyncCheck  = defaultRunSyncCheck,
-  analyze       = defaultAnalyze,
-  confirm       = defaultConfirm,
-  runNpmVersion = defaultRunNpmVersion,
-  gitPush       = defaultGitPush,
-  writeDoneMarker = defaultWriteDoneMarker,
+  cwd              = process.cwd(),
+  sessionId        = '',
+  runBuild         = defaultRunBuild,
+  runTests         = defaultRunTests,
+  runSyncCheck     = defaultRunSyncCheck,
+  analyze          = defaultAnalyze,
+  confirm          = defaultConfirm,
+  getCommitRange   = defaultGetCommitRange,
+  runChangelogDraft = defaultRunChangelogDraft,
+  readChangelog    = defaultReadChangelog,
+  commitChangelog  = defaultCommitChangelog,
+  runNpmVersion    = defaultRunNpmVersion,
+  gitPush          = defaultGitPush,
+  writeDoneMarker  = defaultWriteDoneMarker,
 } = {}) {
 
   // -------------------------------------------------------------------------
@@ -343,6 +457,88 @@ export async function runFlow5({
   }
 
   const { nextVersion } = analysis;
+
+  // -------------------------------------------------------------------------
+  // Step 6a — CHANGELOG draft (ADR 0044 §8.1 / Decision 0041)
+  //
+  // In the live flow the main thread dispatches @agent-idea-architect to
+  // write the CHANGELOG.md entry for v<nextVersion> from the commit range
+  // since the last tag, then injects completion via `runChangelogDraft`.
+  // This module never spawns an agent directly — same separation as step 4.
+  // -------------------------------------------------------------------------
+  let commitRange;
+  try {
+    commitRange = getCommitRange(cwd);
+  } catch (err) {
+    return {
+      released: false,
+      reason:
+        `Could not determine the commit range for the CHANGELOG draft (step 6a). ` +
+        `No CHANGELOG change, no package.json change, no tag. Details: ${err.message}`,
+      version: nextVersion,
+    };
+  }
+
+  try {
+    await runChangelogDraft({ nextVersion, commitRange, cwd });
+  } catch (err) {
+    return {
+      released: false,
+      reason:
+        `CHANGELOG-draft step failed (step 6a). No package.json change, no tag. ` +
+        `context.json left in place for inspection. Details: ${err.message}`,
+      version: nextVersion,
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // Step 6b — CHANGELOG guard (ADR 0044 §8.1 / §8.5)
+  //
+  // Abort cleanly when CHANGELOG.md does not contain a line matching
+  // nextVersion. On abort: context.json is left for inspection, package.json
+  // is unchanged, and no tag is created.
+  //
+  // When the guard passes, commit the CHANGELOG.md edit ahead of the version
+  // bump (commit-folding option (a), ADR 0044 §8.2 — see module header for
+  // rationale). This keeps the working tree clean for `npm version`, which
+  // refuses to run on a dirty tree.
+  // -------------------------------------------------------------------------
+  let changelogContent;
+  try {
+    changelogContent = readChangelog(cwd);
+  } catch (err) {
+    return {
+      released: false,
+      reason:
+        `CHANGELOG guard failed (step 6b): could not read CHANGELOG.md. Expected a line ` +
+        `containing "${nextVersion}". No package.json change, no tag. context.json left in ` +
+        `place for inspection. Details: ${err.message}`,
+      version: nextVersion,
+    };
+  }
+
+  if (!changelogContent.includes(nextVersion)) {
+    return {
+      released: false,
+      reason:
+        `CHANGELOG guard failed (step 6b): CHANGELOG.md does not contain an entry for ` +
+        `"${nextVersion}". Write the CHANGELOG.md entry for v${nextVersion} and re-run flow 5. ` +
+        `No package.json change, no tag. context.json left in place for inspection.`,
+      version: nextVersion,
+    };
+  }
+
+  try {
+    commitChangelog(nextVersion, cwd);
+  } catch (err) {
+    return {
+      released: false,
+      reason:
+        `Committing the CHANGELOG.md edit failed (step 6b). No package.json change, no tag. ` +
+        `context.json left in place for inspection. Details: ${err.message}`,
+      version: nextVersion,
+    };
+  }
 
   // -------------------------------------------------------------------------
   // Step 7 — npm version <derived>

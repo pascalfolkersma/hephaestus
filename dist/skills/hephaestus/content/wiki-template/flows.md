@@ -542,7 +542,11 @@ flowchart TD
     SC --> ANALYSIS["Conventional-commit analysis<br/>git log &lt;last-v-tag&gt;..HEAD --format=%s%n%b<br/>→ derive next version string"]
     ANALYSIS --> CONFIRM{"Confirmation prompt<br/>&quot;About to tag v&lt;next&gt;. Analysis:<br/>&lt;N&gt; fix / &lt;M&gt; feat / &lt;K&gt; breaking.<br/>Proceed? [Y/n]&quot; — default Y"}
     CONFIRM -- N / abort --> ABORT([Abort — package.json untouched<br/>no tag created])
-    CONFIRM -- Y --> BUMP["npm version &lt;derived&gt;<br/>(version-bump commit + local tag)"]
+    CONFIRM -- Y --> DRAFT["CHANGELOG draft ↗ (step 6a)<br/>idea-architect<br/>writes CHANGELOG.md entry for v&lt;next&gt;<br/>from git log &lt;last-tag&gt;..HEAD"]
+    DRAFT --> GUARD{"CHANGELOG guard (step 6b)<br/>CHANGELOG.md contains an entry<br/>for v&lt;next&gt;?"}
+    GUARD -- No / abort --> ABORT
+    GUARD -- Yes --> COMMIT["Commit CHANGELOG.md<br/>docs: update CHANGELOG for v&lt;next&gt;"]
+    COMMIT --> BUMP["npm version &lt;derived&gt;<br/>(version-bump commit + local tag)"]
     BUMP --> PUSH["git push --follow-tags<br/>(triggers CI publish workflow)"]
     PUSH --> DONE["Signal done<br/>touch .claude/flows/$SESSION/done"]
     DONE --> EXIT([Release tag pushed — CI publish triggered])
@@ -553,9 +557,11 @@ flowchart TD
     SC -. "not green → abort" .-> ABORT
 
     classDef syncCheck fill:#7a7a2d,color:#fff,stroke:#22d3ee,stroke-width:2px,stroke-dasharray:5 3
+    classDef ideaArchitect fill:#2d6a7a,color:#fff,stroke:#22d3ee,stroke-width:2px,stroke-dasharray:5 3
     classDef releaseFlow fill:#4a2d7a,color:#fff,stroke:#22d3ee,stroke-width:2px,stroke-dasharray:5 3
 
     class SC syncCheck
+    class DRAFT ideaArchitect
 
     style A fill:#1e3a5f,color:#fff,stroke:none
     style EXIT fill:#1e5f3a,color:#fff,stroke:none
@@ -563,6 +569,7 @@ flowchart TD
     style ABORT fill:#7a2d2d,color:#fff,stroke:#ef4444,stroke-width:1px
 
     click SC href "../.claude/agents/sync-check.md" "Open sync-check" _blank
+    click DRAFT href "../.claude/agents/idea-architect.md" "Open idea-architect" _blank
 ```
 
 - **Trigger:** flow 5 is NOT entered directly. At the end of a flow 2 (build) or flow 3 (bug) cycle, `git-commit-push` asks:
@@ -570,15 +577,18 @@ flowchart TD
 
   Default is **N**. Releases are less frequent than individual builds; defaulting to N prevents accidental triggering. On Y, the main thread updates `context.json` to `{"flow":5,"current_agent":"release","current_task":"release","iteration":1}` (in place, same session directory) and runs the flow-5 sequence. Flow 5 never fires on flows 1, 4, 5, or when `HEPHAESTUS_STANDALONE=1` is set.
 
-- **Agents / sequence:**
-  1. `{{BUILD_COMMAND}}` — must exit 0, or abort
-  2. `{{TEST_COMMAND}}` — must exit 0, or abort
-  3. sync-check — docs-drift mode, must return green, or abort
-  4. Conventional-commit analysis — `git log <last-v-tag>..HEAD --format=%s%n%b` → derive next version string (see bump policy below)
-  5. Confirmation prompt — shows the derived version and the commit-count summary (`<N> fix / <M> feat / <K> breaking`); user must explicitly confirm (default Y) before any irreversible action
-  6. `npm version <derived>` — creates a version-bump commit and a local `v*.*.*` tag
-  7. `git push --follow-tags` — pushes the version-bump commit + tag to the remote, which triggers the CI publish workflow
-  8. `touch .claude/flows/$SESSION/done` — done-marker (written by the main thread after a successful push)
+- **Agents / sequence (eleven steps):**
+  1. Update flow-context — `context.json` set to `{"flow":5,...}` (main thread, before any dispatch)
+  2. `{{BUILD_COMMAND}}` — must exit 0, or abort
+  3. `{{TEST_COMMAND}}` — must exit 0, or abort
+  4. sync-check — docs-drift mode, must return green, or abort
+  5. Conventional-commit analysis — `git log <last-v-tag>..HEAD --format=%s%n%b` → derive next version string (see bump policy below)
+  6. Confirmation prompt — shows the derived version and the commit-count summary (`<N> fix / <M> feat / <K> breaking`); user must explicitly confirm (default Y) before any irreversible action
+  6a. CHANGELOG draft — idea-architect writes the `CHANGELOG.md` entry for `v<next>` from the `git log <last-tag>..HEAD` range; the main thread dispatches the agent and injects its outcome into the flow-5 sequence
+  6b. CHANGELOG guard — checks that `CHANGELOG.md` contains an entry for `v<next>`; if absent, flow 5 aborts cleanly (no `npm version`, no tag, `context.json` left in place for inspection). If present, commit the `CHANGELOG.md` edit as its own commit (`docs: update CHANGELOG for v<next>`) ahead of the version bump
+  7. `npm version <derived>` — creates a version-bump commit and a local `v*.*.*` tag
+  8. `git push --follow-tags` — pushes the CHANGELOG commit, version-bump commit, and tag to the remote, which triggers the CI publish workflow
+  9. `touch .claude/flows/$SESSION/done` — done-marker (written by the main thread after a successful push)
 
 - **Bump policy:**
   Derived from conventional-commit prefixes since the most recent `v*.*.*` tag (in priority order — highest wins):
@@ -590,7 +600,7 @@ flowchart TD
   **Pre-1.0 nuance:** for versions below 1.0.0 (`0.x.y`), a `BREAKING CHANGE` / `!` maps to **minor** (not major). The confirmation prompt highlights pre-1.0 breaking changes with a warning even when the bump is classified as minor.
 
 - **Exit:**
-  - **Abort** — clean; any gate failure (build, test, sync-check) or a "N" at the confirmation prompt leaves `package.json` untouched and creates no tag. `context.json` is left in place with `{"flow":5,...}` so the failure state is inspectable; the human must resolve the failure and restart flow 5 manually.
+  - **Abort** — clean; any gate failure (build, test, sync-check), a "N" at the confirmation prompt, or a missing CHANGELOG entry at the step 6b guard leaves `package.json` untouched and creates no tag. `context.json` is left in place with `{"flow":5,...}` so the failure state is inspectable; the human must resolve the failure (writing the CHANGELOG entry manually, if that's the cause) and restart flow 5 manually.
   - **Success** — done-marker written only after a successful `git push --follow-tags`. The Stop hook removes the session directory on the next `Stop` event.
 
 - **No self-healing loop.** Flow 5 has no self-healing; it either succeeds or aborts cleanly. Gate failures require human intervention before a retry.
@@ -611,14 +621,16 @@ cat > .claude/flows/$SESSION/plan.json << 'EOF'
   "flow": 5,
   "generated": "<ISO timestamp>",
   "steps": [
-    { "id": "build",          "label": "{{BUILD_COMMAND}}",        "status": "current" },
-    { "id": "test",           "label": "{{TEST_COMMAND}}",         "status": "pending" },
-    { "id": "sync-check",     "label": "Sync-check (docs-drift)",  "status": "pending" },
-    { "id": "analysis",       "label": "Conventional-commit analysis", "status": "pending" },
-    { "id": "confirm",        "label": "Confirmation prompt",      "status": "pending" },
-    { "id": "version-bump",   "label": "npm version <derived>",    "status": "pending" },
-    { "id": "push-tags",      "label": "git push --follow-tags",   "status": "pending" },
-    { "id": "done-marker",    "label": "Signal done",              "status": "pending" }
+    { "id": "build",           "label": "{{BUILD_COMMAND}}",        "status": "current" },
+    { "id": "test",            "label": "{{TEST_COMMAND}}",         "status": "pending" },
+    { "id": "sync-check",      "label": "Sync-check (docs-drift)",  "status": "pending" },
+    { "id": "analysis",        "label": "Conventional-commit analysis", "status": "pending" },
+    { "id": "confirm",         "label": "Confirmation prompt",      "status": "pending" },
+    { "id": "changelog-draft", "label": "CHANGELOG draft (idea-architect)", "status": "pending" },
+    { "id": "changelog-guard", "label": "CHANGELOG guard",          "status": "pending" },
+    { "id": "version-bump",    "label": "npm version <derived>",    "status": "pending" },
+    { "id": "push-tags",       "label": "git push --follow-tags",   "status": "pending" },
+    { "id": "done-marker",     "label": "Signal done",              "status": "pending" }
   ],
   "backEdges": []
 }
@@ -745,7 +757,7 @@ The fill color per node in each flow diagram matches the `color:` field in the a
 
 | Agent | `color:` | Mermaid fill | Role in flow |
 |---|---|---|---|
-| idea-architect | cyan | `#2d6a7a` | Flow 1 + 4 doc-only work; doc-update handoffs in Flow 2/3 |
+| idea-architect | cyan | `#2d6a7a` | Flow 1 + 4 doc-only work; doc-update handoffs in Flow 2/3; CHANGELOG draft step in Flow 5 |
 | developer | blue | `#2d4a7a` | Flow 2 executor — implementation |
 | test-writer | purple | `#5b2d7a` | Flow 2/3 verify — unit + regression tests |
 | bug-fixer | red | `#7a2d2d` | Flow 2 executor on failures; Flow 3 primary executor |
