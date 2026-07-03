@@ -344,8 +344,10 @@ describe('SG4 — SKILL.md Step 4 warns against including hephaestus in the skil
 // ---------------------------------------------------------------------------
 // SG5 — dist/skills/hephaestus/content/skills/ has no recursive hephaestus/ entry
 //
-// M11.19 (Decision 0040 Option B): the second peer skill was removed. Only
-// lore-keeper remains as a bundled peer skill inside the hephaestus full bundle.
+// M11.19 (Decision 0040 Option B): the second peer skill was removed, and
+// lore-keeper was bundled as a peer skill inside the hephaestus full bundle.
+// Later batches (e.g. M14) added further peer skills alongside it, so
+// lore-keeper is one of several bundled peer skills, not the only one.
 // ---------------------------------------------------------------------------
 
 describe('SG5 — dist/skills/hephaestus/content/skills/ has no recursive hephaestus/ entry', () => {
@@ -360,7 +362,7 @@ describe('SG5 — dist/skills/hephaestus/content/skills/ has no recursive hephae
     );
   });
 
-  test('SG5-b: dist/skills/hephaestus/content/skills/ contains lore-keeper (M11.19: only peer skill)', () => {
+  test('SG5-b: dist/skills/hephaestus/content/skills/ contains lore-keeper', () => {
     const loreKeeper = resolve(
       REPO_ROOT,
       'dist', 'skills', 'hephaestus', 'content', 'skills', 'lore-keeper', 'SKILL.md',
