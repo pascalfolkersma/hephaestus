@@ -19,11 +19,35 @@ async function ask(iface, label, defaultValue) {
   return trimmed === '' ? (defaultValue ?? '') : trimmed;
 }
 
-async function askRequired(iface, label) {
+/**
+ * Ask until a non-empty answer arrives.
+ *
+ * On a non-interactive interface (piped stdin, CI, `--config` with a missing
+ * required key) there is no one to re-ask: the buffered reader returns '' for
+ * every subsequent question. Re-prompting in that situation spins forever, so
+ * we fail with a message that names the key the caller must supply.
+ *
+ * @param {object} iface — readline interface from openReadline()
+ * @param {string} label — human-readable prompt label
+ * @param {string} [key] — config key name, used in the non-interactive error
+ */
+async function askRequired(iface, label, key) {
   while (true) {
     const answer = await iface.question(`${label}: `);
     const trimmed = answer.trim();
     if (trimmed !== '') return trimmed;
+
+    // Non-interactive and out of buffered input — re-asking cannot succeed.
+    const exhausted = iface.isInteractive === false && iface.hasInput === false;
+    if (exhausted) {
+      const keyHint = key ? `"${key}"` : `"${label}"`;
+      throw new Error(
+        `Required answer ${keyHint} is missing and stdin has no more input.\n` +
+        `  Add ${keyHint} to your --config file with a real value, or run init interactively.\n` +
+        `  Note: an empty value (${keyHint}: "") counts as missing — omit the key or fill it in.`,
+      );
+    }
+
     console.log('  (required — please enter a value)');
   }
 }
@@ -89,8 +113,30 @@ export async function prompt(_detectionResult, introspectionResult = null, share
   }
 
   /**
+   * Keys for which an empty string is a MEANINGFUL answer rather than a blank.
+   *
+   *   agents: '' → render all agents
+   *   skills: '' → install the default skill set
+   *
+   * For every other key an empty value means "the generator had nothing to put
+   * here", not "the user chose emptiness".  See prefilled() below.
+   */
+  const EMPTY_IS_AN_ANSWER = new Set(['agents', 'skills']);
+
+  /**
    * Returns the pre-filled value for `key` if configAnswers contains it, or
    * undefined if the caller should fall through to the interactive path.
+   *
+   * An empty / whitespace-only value falls through as if the key were absent
+   * (except for EMPTY_IS_AN_ANSWER keys).  Without this, a generated init.yaml
+   * that carries every key but could only fill some of them would silently
+   * answer the remaining prompts with '' — including the askRequired-backed
+   * ones, whose whole purpose is to refuse a blank.  A blank docs_root in
+   * particular resolves the lore skeleton to the project root.
+   *
+   * Arrays are joined rather than String()-ed: String(['a','b']) yields "a,b"
+   * with no separator space, which then renders into the target project's
+   * CLAUDE.md verbatim.
    *
    * Logs a one-line notice so the user (or CI log) can see what was skipped.
    */
@@ -99,8 +145,18 @@ export async function prompt(_detectionResult, introspectionResult = null, share
     const value = configAnswers[key];
     // Normalize: null / undefined in the YAML means "not provided" → fall through.
     if (value == null) return undefined;
-    console.log(`  [config] ${key}: ${JSON.stringify(value)}`);
-    return String(value);
+
+    const normalized = Array.isArray(value)
+      ? value.map((v) => String(v).trim()).filter(Boolean).join(', ')
+      : String(value);
+
+    if (normalized.trim() === '' && !EMPTY_IS_AN_ANSWER.has(key)) {
+      console.log(`  [config] ${key}: (empty — falling back to default/prompt)`);
+      return undefined;
+    }
+
+    console.log(`  [config] ${key}: ${JSON.stringify(normalized)}`);
+    return normalized;
   }
 
   /**
@@ -120,7 +176,7 @@ export async function prompt(_detectionResult, introspectionResult = null, share
   async function askRequiredOrConfig(iface, key, label) {
     const pre = prefilled(key);
     if (pre !== undefined) return pre;
-    return askRequired(iface, label);
+    return askRequired(iface, label, key);
   }
 
   // --- Shells ---
@@ -219,7 +275,13 @@ export async function prompt(_detectionResult, introspectionResult = null, share
 
   // --- Memory ---
   header('Memory');
-  console.log('Available: project-local (.claude/memory/, version-controlled) | global (~/.claude/projects/<slug>/memory/)');
+  // The project-local root differs per shell (.claude/ vs .github/ — ADR 0039 §7).
+  // Announce the root that will actually be written, not a hardcoded .claude/.
+  const memoryRoots = shells.map((s) => (s === 'copilot' ? '.github/memory/' : '.claude/memory/'));
+  console.log(
+    `Available: project-local (${memoryRoots.join(' + ')}, version-controlled) ` +
+    `| global (~/.claude/projects/<slug>/memory/)`,
+  );
   const memoryInput = await askOrConfig(iface, 'memory_location', 'Memory location', 'project-local');
   const memory_location = (memoryInput === 'g' || memoryInput === 'global') ? 'global' : 'project-local';
 

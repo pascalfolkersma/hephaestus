@@ -21,6 +21,11 @@ const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 const MAGIC_PLACEHOLDERS = {
   SKILLS_DIR: 'output.skills_dir',
   AGENTS_DIR: 'output.agents_dir',
+  // Per-shell state root ('.claude' / '.github'). Agent bodies that name session
+  // state, flow-context, or memory paths must use {{STATE_ROOT}} rather than a
+  // literal .claude/ — otherwise the Copilot render tells the agent to read paths
+  // that only exist in a Claude Code install.
+  STATE_ROOT: 'output.state_root',
 };
 
 // Partial filename → top-level heading the source body would use to opt out

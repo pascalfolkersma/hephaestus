@@ -52,6 +52,58 @@ describe('detect', () => {
     assert.ok(result.signals.includes('.claude/'), `expected .claude/ in ${JSON.stringify(result.signals)}`);
   });
 
+  test('.claude/ containing only the bootstrap skill is NOT an existing-project signal', () => {
+    // This is the on-disk state left by `npx @pascalfolkersma/hephaestus install`.
+    // Counting it as a signal made greenfield unreachable for the documented flow.
+    const dir = makeTemp();
+    mkdirSync(join(dir, '.claude', 'skills', 'hephaestus'), { recursive: true });
+    writeFileSync(join(dir, '.claude', 'skills', 'hephaestus', 'SKILL.md'), '---\nname: hephaestus\n---\n');
+    const result = detect(dir);
+    assert.equal(result.type, 'greenfield');
+    assert.ok(
+      !result.signals.includes('.claude/'),
+      `.claude/ must not be a signal when it holds only the bootstrap skill; got ${JSON.stringify(result.signals)}`,
+    );
+  });
+
+  test('.claude/ with a second skill alongside the bootstrap skill IS a signal', () => {
+    const dir = makeTemp();
+    mkdirSync(join(dir, '.claude', 'skills', 'hephaestus'), { recursive: true });
+    mkdirSync(join(dir, '.claude', 'skills', 'lore-keeper'), { recursive: true });
+    const result = detect(dir);
+    assert.equal(result.type, 'existing');
+    assert.ok(result.signals.includes('.claude/'), `expected .claude/ in ${JSON.stringify(result.signals)}`);
+  });
+
+  test('.claude/ with agents/ alongside the bootstrap skill IS a signal', () => {
+    const dir = makeTemp();
+    mkdirSync(join(dir, '.claude', 'skills', 'hephaestus'), { recursive: true });
+    mkdirSync(join(dir, '.claude', 'agents'), { recursive: true });
+    const result = detect(dir);
+    assert.equal(result.type, 'existing');
+    assert.ok(result.signals.includes('.claude/'), `expected .claude/ in ${JSON.stringify(result.signals)}`);
+  });
+
+  test('.github/ with real content IS an existing-project signal (symmetry with .claude/)', () => {
+    // Previously only .claude/ was checked, so a Copilot project with CI workflows
+    // was classified greenfield while the equivalent Claude Code project was not.
+    const dir = makeTemp();
+    mkdirSync(join(dir, '.github', 'workflows'), { recursive: true });
+    const result = detect(dir);
+    assert.equal(result.type, 'existing');
+    assert.ok(result.signals.includes('.github/'), `expected .github/ in ${JSON.stringify(result.signals)}`);
+  });
+
+  test('.github/ containing only the bootstrap skill is NOT a signal', () => {
+    // The state left by `hephaestus install --harness=copilot`.
+    const dir = makeTemp();
+    mkdirSync(join(dir, '.github', 'skills', 'hephaestus'), { recursive: true });
+    writeFileSync(join(dir, '.github', 'skills', 'hephaestus', 'SKILL.md'), '---\nname: hephaestus\n---\n');
+    const result = detect(dir);
+    assert.equal(result.type, 'greenfield');
+    assert.deepEqual(result.signals, []);
+  });
+
   test('custom docs root via knownDocsRoots → signal for that directory', () => {
     const dir = makeTemp();
     mkdirSync(join(dir, 'mywiki'));

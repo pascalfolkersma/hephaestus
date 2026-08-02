@@ -309,7 +309,7 @@ async function main() {
   // Pass iface so conflict handlers can use the same pre-read buffer on piped stdin.
   // isTTY is derived from the open readline interface — piped stdin is non-TTY.
   const conflictHandler = isUpgrade
-    ? makeUpgradeConflictHandler(stats, { docsRoot: ctx.docs_root ?? 'lore', wiki_layout: ctx.wiki_layout, isTTY: process.stdin.isTTY ?? false, dryRun, showDiff }, iface)
+    ? makeUpgradeConflictHandler(stats, { docsRoot: ctx.docs_root || 'lore', wiki_layout: ctx.wiki_layout, isTTY: process.stdin.isTTY ?? false, dryRun, showDiff }, iface)
     : makeConflictHandler(stats, iface, { dryRun, showDiff });
 
   const loreResult = await writeLoreSkeleton(targetDir, ctx, conflictHandler);
@@ -397,7 +397,7 @@ async function main() {
   // Write Phase 7 concept-ingestion marker on greenfield
   // init when CONCEPT.md is present at the target project root.
   // Routed to the active shell's state root (ADR 0039 §5, M12.13).
-  await writePostInitConceptMarker(targetDir, detectionResult, stats, activeShells, { dryRun });
+  await writePostInitConceptMarker(targetDir, detectionResult, stats, activeShells, { dryRun, projectContext: ctx });
 
   if (dryRun) {
     printDryRunReport(targetDir, stats);

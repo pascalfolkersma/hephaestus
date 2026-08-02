@@ -4,6 +4,8 @@ output:
   agents_dir: .claude/agents
   agent_extension: .md
   skills_dir: .claude/skills
+  # Per-shell state root, surfaced to agent bodies as {{STATE_ROOT}}.
+  state_root: .claude
 
 frontmatter:
   supported_fields: [name, description, tools, model, color]

@@ -65,7 +65,7 @@ mkdir -p .claude/flows/$SESSION
 echo '{"flow":2,"current_agent":"orchestrator","current_task":"<roadmap item>","iteration":1}' > .claude/flows/$SESSION/context.json
 ```
 
-The session ID is written by the `SessionStart` hook when the session opens, to `.claude/.current-session-id`. The dispatch-enforcement hook reads `session_id` from its own stdin JSON and resolves the flow tag from `.claude/flows/<session_id>/context.json` on every Agent/Task dispatch. Without this file, all dispatches are refused (except with the `HEPHAESTUS_STANDALONE=1` override).
+The session ID is written to `.claude/.current-session-id` by a Hephaestus hook at the start of the session (Claude Code: the `SessionStart` hook; Copilot: the `PreToolUse` dispatch-enforcement hook, which is the first hook to see the session id). The dispatch-enforcement hook then reads the session id from its own stdin JSON and resolves the flow tag from `.claude/flows/<session_id>/context.json` on every dispatch. Without this file, all dispatches are refused (except with the `HEPHAESTUS_STANDALONE=1` override).
 
 For ad-hoc inline work outside a flow: set `HEPHAESTUS_STANDALONE=1` as an env var before starting `claude` (cannot be changed mid-session).
 

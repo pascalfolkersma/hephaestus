@@ -75,7 +75,9 @@ function remapSubDir(relPath, layout) {
  * @returns {Promise<{ written: string[], skipped: string[] }>}
  */
 export async function write(targetDir, projectContext, conflictHandler) {
-  const docsRoot = projectContext.docs_root ?? 'lore';
+  // `||` not `??`: an empty docs_root would resolve loreDir to targetDir itself,
+  // scattering wiki/ raw/ adr/ decisions/ across the project root.
+  const docsRoot = projectContext.docs_root || 'lore';
   const loreDir = join(targetDir, docsRoot);
   const layout = projectContext.wiki_layout ?? DEFAULT_WIKI_LAYOUT;
 

@@ -683,6 +683,32 @@ async function main() {
     }
   }
 
+  // Persist the session id so the agent can resolve its own session directory.
+  //
+  // Claude Code has a SessionStart hook that writes .claude/.current-session-id.
+  // Copilot exposes no SessionStart event and no session-id file (ADR 0039 §5) —
+  // sessionId arrives only in hook stdin. Without a file, an agent instructed to
+  // write .github/flows/<sessionId>/context.json has no way to learn <sessionId>,
+  // which makes the flow-context step unperformable on Copilot.
+  //
+  // PreToolUse fires before the tool runs, so writing the file here means a shell
+  // command that reads it in the same invocation already sees the current value.
+  //
+  // Best-effort and fail-open: a write failure must never block a tool call.
+  if (sessionId) {
+    try {
+      const sessionIdPath = `${ADAPTER.STATE_ROOT}/.current-session-id`;
+      let existing = '';
+      try { existing = fs.readFileSync(sessionIdPath, 'utf8'); } catch { /* absent */ }
+      if (existing.trim() !== sessionId) {
+        fs.mkdirSync(ADAPTER.STATE_ROOT, { recursive: true });
+        fs.writeFileSync(sessionIdPath, sessionId, 'utf8');
+      }
+    } catch {
+      // Non-fatal: the gate still works from the stdin sessionId.
+    }
+  }
+
   // Nothing to act on — let the call through without blocking silently.
   if (!toolName) {
     process.exit(0);

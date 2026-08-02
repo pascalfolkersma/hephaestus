@@ -57,6 +57,22 @@ describe('substitutePlaceholders', () => {
     assert.equal(result, 'dir: .claude/agents');
   });
 
+  test('magic placeholder STATE_ROOT resolves per shell', () => {
+    // Agent bodies name session-state paths via {{STATE_ROOT}} so the Copilot
+    // render points at .github/ instead of Claude Code's .claude/.
+    const claude  = { output: { state_root: '.claude' } };
+    const copilot = { output: { state_root: '.github' } };
+
+    assert.equal(
+      substitutePlaceholders('id: {{STATE_ROOT}}/.current-session-id', {}, claude),
+      'id: .claude/.current-session-id',
+    );
+    assert.equal(
+      substitutePlaceholders('id: {{STATE_ROOT}}/.current-session-id', {}, copilot),
+      'id: .github/.current-session-id',
+    );
+  });
+
   test('no placeholders in string → string returned unchanged', () => {
     const body = 'No placeholders here.';
     const result = substitutePlaceholders(body, {}, noMapping);

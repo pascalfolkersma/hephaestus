@@ -14,6 +14,48 @@ function isDir(p) {
   try { return statSync(p).isDirectory(); } catch { return false; }
 }
 
+/**
+ * True when a state root (.claude/ or .github/) contains nothing except the
+ * Hephaestus bootstrap skill that `install` just placed there.
+ *
+ * The documented two-command flow is:
+ *   npx @pascalfolkersma/hephaestus install   → writes <stateRoot>/skills/hephaestus/
+ *   npx @pascalfolkersma/hephaestus init      → this detection runs
+ *
+ * Treating that installer-created directory as an "existing project" signal makes
+ * greenfield unreachable for every user who follows the documented path — which in
+ * turn permanently suppresses the greenfield-gated Phase 7 concept-ingestion marker.
+ * A state root whose only content is the bootstrap skill carries no information
+ * about the project, so it is not a signal.
+ *
+ * Anything else under the state root (agents/, hooks/, settings.json, memory/, a
+ * second skill) means a real prior installation and still counts as a signal.
+ */
+function isBootstrapOnlyStateRoot(stateRootPath) {
+  let entries;
+  try {
+    entries = readdirSync(stateRootPath);
+  } catch {
+    return false;
+  }
+
+  // Ignore OS/editor noise that carries no project signal.
+  const meaningful = entries.filter((name) => name !== '.DS_Store' && name !== 'Thumbs.db');
+
+  // An empty state root remains a signal — someone created it deliberately, and that
+  // is long-standing documented behaviour. Only the exact installer-created layout
+  // (<stateRoot>/skills/hephaestus/ and nothing else) is exempt.
+  if (meaningful.length !== 1 || meaningful[0] !== 'skills') return false;
+
+  let skillEntries;
+  try {
+    skillEntries = readdirSync(join(stateRootPath, 'skills'));
+  } catch {
+    return false;
+  }
+  return skillEntries.length === 1 && skillEntries[0] === 'hephaestus';
+}
+
 function isNonEmpty(p) {
   try { return statSync(p).size > 0; } catch { return false; }
 }
@@ -124,7 +166,19 @@ function detect(targetDir, knownDocsRoots = DEFAULT_DOCS_ROOTS) {
 
   if (isDir(join(targetDir, '.git')))              existingSignals.push('.git/');
   if (existsSync(join(targetDir, 'package.json'))) existingSignals.push('package.json');
-  if (isDir(join(targetDir, '.claude')))           existingSignals.push('.claude/');
+
+  // State roots count as existing-project signals only when they hold more than the
+  // bootstrap skill written by `hephaestus install` — see isBootstrapOnlyStateRoot().
+  //
+  // Both roots are checked. Previously only .claude/ was, which meant a Copilot
+  // project carrying .github/workflows/ (or any other real content) was classified
+  // greenfield while the equivalent Claude Code project was classified existing.
+  for (const stateRootName of ['.claude', '.github']) {
+    const stateRoot = join(targetDir, stateRootName);
+    if (isDir(stateRoot) && !isBootstrapOnlyStateRoot(stateRoot)) {
+      existingSignals.push(`${stateRootName}/`);
+    }
+  }
 
   let resolvedDocsRoot = 'lore';
   for (const root of knownDocsRoots) {

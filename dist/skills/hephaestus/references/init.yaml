@@ -17,12 +17,30 @@
 #
 # OPTIONAL KEYS
 # -------------
-# All keys are optional in the sense that omitting one falls back to the
-# interactive readline prompt for that question. To run fully non-interactively,
-# supply ALL required keys (those backed by askRequiredOrConfig in prompt.js):
-#   project_name, domain_context (if not introspectable), build_command (if not
-#   introspectable), key_directories (if not introspectable), source_directories,
-#   deploy_trigger, review_scope, standards.
+# All keys are optional in the sense that omitting one falls back to that
+# question's built-in default, or to the interactive readline prompt when it has
+# none. To run fully non-interactively, supply ALL required keys (those backed by
+# askRequiredOrConfig in prompt.js):
+#   project_name, source_directories, deploy_trigger, review_scope, standards,
+#   plus domain_context, build_command, key_directories and tech_stack whenever
+#   introspection cannot derive them (i.e. always, on an empty repo).
+# Init aborts with an explicit error when a required key is missing on
+# non-interactive input — it no longer proceeds half-configured.
+#
+# OMIT — DO NOT BLANK
+# -------------------
+# Never write a key with an empty value as a placeholder. Omit the key instead.
+#
+#   docs_root: ""     # WRONG — scatters wiki/ raw/ adr/ decisions/ across the project root
+#   # docs_root omitted  # RIGHT — engine uses its default, "lore"
+#
+# Empty values are only meaningful for two keys:
+#   agents: ""   → render all agents
+#   skills: ""   → install the default skill set
+#
+# Every other key treats an empty value as "not supplied" and falls back to its
+# default or prompt. Write scalars, not YAML lists — a `- item` list for a field
+# like always_exclude reaches the engine as one joined string.
 #
 # WIKI LAYOUT KEYS
 # ----------------
@@ -44,8 +62,24 @@ agents: ""
 
 # --- Skills ---
 # Comma-separated list of skill names to install.
-# Available: lore-keeper (and others listed by the init flow).
 # Default when omitted: "lore-keeper"
+#
+# Full catalog (every directory under the bundle's content/skills/ except
+# `hephaestus` itself, which Phase 1 already installed and which the engine
+# refuses to re-install):
+#   lore-keeper             knowledge base: raw sources, wiki, ADRs, decisions
+#   design-sync             Claude Design URL ingest (Flow 6)
+#   roadmap-parser          ROADMAP.md milestone/item IDs and wave markers
+#   dispatch-decision-tree  which specialist agent handles a given request
+#   codebase-introspection  package-manager / dependency / structure detection
+#   contract-validator      validate Hephaestus agent source files
+#   api-contract-tester     HTTP API request/response contract tests
+#   react-component-author  React / Next.js components and their tests
+#   sql-migration-writer    relational schema migrations
+#   github-actions-author   CI/CD workflow YAML
+#
+# The init flow lists whatever is actually present in the release and will offer
+# to adopt any catalog additions this file predates.
 skills: "lore-keeper"
 
 # --- Project identity ---

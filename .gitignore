@@ -31,6 +31,12 @@ build/
 .claude/flows/
 .claude/.current-session-id
 
+# Same per-session state on the Copilot side (ADR 0039 §5). The session-id file is
+# written by the PreToolUse dispatch-enforcement hook, since Copilot exposes no
+# SessionStart event.
+.github/flows/
+.github/.current-session-id
+
 # Local machine settings — contains absolute paths (C:\Users\Pascal\...) that must not be committed
 .claude/settings.local.json
 

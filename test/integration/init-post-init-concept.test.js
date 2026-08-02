@@ -342,3 +342,61 @@ describe('C4: idempotency — CONCEPT.md moved away before re-run → marker NOT
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// C5: CONCEPT.md present on an 'existing' (not upgrade) init → marker IS written
+//
+// Reported from a real run: a new project that had run `git init` — or that had
+// the bootstrap skill at .claude/skills/hephaestus/ from `hephaestus install` —
+// was classified 'existing', and the greenfield-only gate silently suppressed
+// Phase 7 even though a CONCEPT.md brief was sitting at the project root.
+//
+// The gate is now upgrade-only. 'existing' means "this directory has files",
+// not "this project already has a Hephaestus knowledge base".
+// ---------------------------------------------------------------------------
+
+describe('C5: CONCEPT.md present + existing (non-upgrade) init → marker IS written', () => {
+  test('C5.1: .git/ present + CONCEPT.md → marker IS written', () => {
+    const dir = makeTemp('heph-c5-');
+    mkdirSync(join(dir, '.git'), { recursive: true });
+    writeFileSync(join(dir, 'CONCEPT.md'), DUMMY_CONCEPT_MD, 'utf8');
+    const cfg = writeConfig(dir);
+    runInit(dir, cfg);
+
+    assert.ok(
+      existsSync(CONCEPT_MARKER_PATH(dir)),
+      'a git-initialised project with a CONCEPT.md must still get the Phase 7 marker',
+    );
+  });
+
+  test('C5.2: bootstrap skill at .claude/skills/hephaestus/ + CONCEPT.md → marker IS written', () => {
+    const dir = makeTemp('heph-c5-');
+    mkdirSync(join(dir, '.claude', 'skills', 'hephaestus'), { recursive: true });
+    writeFileSync(
+      join(dir, '.claude', 'skills', 'hephaestus', 'SKILL.md'),
+      '---\nname: hephaestus\n---\n',
+      'utf8',
+    );
+    writeFileSync(join(dir, 'CONCEPT.md'), DUMMY_CONCEPT_MD, 'utf8');
+    const cfg = writeConfig(dir);
+    runInit(dir, cfg);
+
+    assert.ok(
+      existsSync(CONCEPT_MARKER_PATH(dir)),
+      'the state left by `hephaestus install` must not suppress the Phase 7 marker',
+    );
+  });
+
+  test('C5.3: package.json present + CONCEPT.md → marker IS written', () => {
+    const dir = makeTemp('heph-c5-');
+    writeFileSync(join(dir, 'package.json'), '{"name":"metis"}', 'utf8');
+    writeFileSync(join(dir, 'CONCEPT.md'), DUMMY_CONCEPT_MD, 'utf8');
+    const cfg = writeConfig(dir);
+    runInit(dir, cfg);
+
+    assert.ok(
+      existsSync(CONCEPT_MARKER_PATH(dir)),
+      'a project with a package.json but no Hephaestus content must still get the Phase 7 marker',
+    );
+  });
+});

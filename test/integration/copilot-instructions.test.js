@@ -827,8 +827,15 @@ describe('copilot-instructions — Scenario 6: detect() upgrade signal', () => {
 
     assert.equal(result.type, 'upgrade',
       'Lone non-empty copilot-instructions.md must be sufficient to trigger upgrade mode');
-    assert.deepEqual(result.signals, [],
-      'signals (existing-tier) must be empty when only copilot-instructions.md is present');
+    // The .github/ directory holding it is itself an existing-project signal, the
+    // same way .claude/ is on the Claude Code side. What matters for this scenario
+    // is that the upgrade tier wins — the existing tier does not suppress it.
+    assert.deepEqual(result.signals, ['.github/'],
+      'a content-bearing .github/ is an existing-tier signal (symmetric with .claude/)');
+    assert.ok(
+      result.upgradeSignals.includes('.github/copilot-instructions.md'),
+      'copilot-instructions.md must appear in upgradeSignals',
+    );
   });
 
   test('S6e: copilot-instructions.md alongside CLAUDE.md → both appear in upgradeSignals', () => {

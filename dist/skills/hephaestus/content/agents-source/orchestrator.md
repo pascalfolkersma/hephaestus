@@ -64,22 +64,22 @@ Flow 2: produces the dispatch plan that opens the full build pipeline. Flow 3: o
 At the start of your dispatch plan, write the session-linked flow-context file as the first step, before calling any executors:
 
 ```bash
-SESSION=$(cat .claude/.current-session-id)
-mkdir -p .claude/flows/$SESSION
-echo '{"flow":2,"current_agent":"orchestrator","current_task":"<roadmap item>","iteration":1}' > .claude/flows/$SESSION/context.json
+SESSION=$(cat {{STATE_ROOT}}/.current-session-id)
+mkdir -p {{STATE_ROOT}}/flows/$SESSION
+echo '{"flow":2,"current_agent":"orchestrator","current_task":"<roadmap item>","iteration":1}' > {{STATE_ROOT}}/flows/$SESSION/context.json
 ```
 
-The session ID is written by the `SessionStart` hook when the session opens, to `.claude/.current-session-id`. The dispatch-enforcement hook reads `session_id` from its own stdin JSON and resolves the flow tag from `.claude/flows/<session_id>/context.json` on every Agent/Task dispatch. Without this file, all dispatches are refused (except with the `HEPHAESTUS_STANDALONE=1` override).
+The session ID is written to `{{STATE_ROOT}}/.current-session-id` by a Hephaestus hook at the start of the session (Claude Code: the `SessionStart` hook; Copilot: the `PreToolUse` dispatch-enforcement hook, which is the first hook to see the session id). The dispatch-enforcement hook then reads the session id from its own stdin JSON and resolves the flow tag from `{{STATE_ROOT}}/flows/<session_id>/context.json` on every dispatch. Without this file, all dispatches are refused (except with the `HEPHAESTUS_STANDALONE=1` override).
 
 For ad-hoc inline work outside a flow: set `HEPHAESTUS_STANDALONE=1` as an env var before starting `claude` (cannot be changed mid-session).
 
-After the flow completes, `@agent-git-commit-push` removes the session directory as part of its standard close-out procedure (current session only; the parent `.claude/flows/` directory is preserved).
+After the flow completes, `@agent-git-commit-push` removes the session directory as part of its standard close-out procedure (current session only; the parent `{{STATE_ROOT}}/flows/` directory is preserved).
 
 See `{{DOCS_ROOT}}/flows.md` for the canonical flow definitions and the mechanism detail behind session-linked flow context.
 
 ### Re-orientation
 
-If you have lost track of the current flow position, read `.claude/flows/<session-id>/where-am-i.md` to re-orient before proceeding. The session ID is in `.claude/.current-session-id`. This file is written by the `SubagentStop` hook at each subagent completion — it is always more accurate than trying to reconstruct position from in-context state.
+If you have lost track of the current flow position, read `{{STATE_ROOT}}/flows/<session-id>/where-am-i.md` to re-orient before proceeding. The session ID is in `{{STATE_ROOT}}/.current-session-id`. This file is written by the `SubagentStop` hook at each subagent completion — it is always more accurate than trying to reconstruct position from in-context state.
 
 ### plan.json — written by the main thread, not the orchestrator
 
@@ -91,11 +91,11 @@ When executing the dispatch plan you return, the main thread must keep the three
 
 - **Before dispatching each executor:** overwrite `context.json` with `current_agent` set to that executor's name and `current_task` set to its one-line task label. Example:
   ```bash
-  echo '{"flow":2,"current_agent":"developer","current_task":"<task label>","iteration":1}' > .claude/flows/$SESSION/context.json
+  echo '{"flow":2,"current_agent":"developer","current_task":"<task label>","iteration":1}' > {{STATE_ROOT}}/flows/$SESSION/context.json
   ```
 - **When an executor returns and before the next is dispatched:** reset `current_agent` to bare JSON `null` (not the string `"null"`) to signal main-thread coordination state. Example:
   ```bash
-  echo '{"flow":2,"current_agent":null,"current_task":"<roadmap item>","iteration":1}' > .claude/flows/$SESSION/context.json
+  echo '{"flow":2,"current_agent":null,"current_task":"<roadmap item>","iteration":1}' > {{STATE_ROOT}}/flows/$SESSION/context.json
   ```
 - **On a self-healing re-dispatch** (the N=3 must-fix loop): increment `iteration` by 1.
 

@@ -4,6 +4,8 @@ output:
   agents_dir: .github/agents
   agent_extension: .agent.md
   skills_dir: .github/skills
+  # Per-shell state root, surfaced to agent bodies as {{STATE_ROOT}} (ADR 0039 §5).
+  state_root: .github
 
 frontmatter:
   # Per ADR 0001: Copilot supports name, description, tools, model, target, handoffs.

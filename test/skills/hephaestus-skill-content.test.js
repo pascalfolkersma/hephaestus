@@ -243,13 +243,17 @@ describe('hephaestus skill — Check 3 gitignore list (Finding 4 regression)', (
     );
   });
 
-  test('verify-checklist.md: Check 3 row still references ".claude/flows/"', () => {
+  test('verify-checklist.md: Check 3 row still requires the flows/ gitignore entry', () => {
     const content = readFileSync(VERIFY_CHECKLIST, 'utf8');
     const check3Row = extractChecklistCheck3(content);
     assert.ok(check3Row !== null, 'verify-checklist.md must contain a "| 3 |" table row.');
+    // The flows directory is state-root-relative: .claude/flows/ for Claude Code,
+    // .github/flows/ for Copilot. The row may name either concrete path or the
+    // <stateRoot>/ placeholder — what must not happen is the entry disappearing.
     assert.ok(
-      check3Row.includes('.claude/flows/'),
-      'verify-checklist.md Check 3 row must still reference ".claude/flows/" as a required gitignore entry.'
+      /(\.claude|\.github|<stateRoot>)\/flows\//.test(check3Row),
+      'verify-checklist.md Check 3 row must still require a flows/ gitignore entry ' +
+      '(".claude/flows/", ".github/flows/", or "<stateRoot>/flows/").'
     );
   });
 

@@ -13,6 +13,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { resolve, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { DEFAULT_WIKI_LAYOUT } from './detect.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../..');
@@ -20,6 +21,31 @@ const repoRoot = resolve(__dirname, '../..');
 // ---------------------------------------------------------------------------
 // Internal: state-root resolution for post-init markers (ADR 0039 §5, M12.13)
 // ---------------------------------------------------------------------------
+
+/**
+ * Resolve the knowledge-base directory names from a project context.
+ *
+ * The marker files are instruction text for the post-init LLM session, so every
+ * path they name must match what the engine actually wrote. Hardcoding `lore/`
+ * here sends Phase 7 / Phase 8 to a different tree than lore-skeleton.js built
+ * whenever the project configured a different docs root.
+ *
+ * `||` not `??` throughout — an empty docs_root means "not supplied", not "the
+ * project root".
+ *
+ * @param {object} [projectContext]
+ * @returns {{ docsRoot: string, entries: string, sources: string, adr: string, decisions: string }}
+ */
+function resolveKnowledgeDirs(projectContext = {}) {
+  const layout = projectContext.wiki_layout ?? {};
+  return {
+    docsRoot:  projectContext.docs_root || 'lore',
+    entries:   layout.entries || DEFAULT_WIKI_LAYOUT.entries,
+    sources:   layout.sources || DEFAULT_WIKI_LAYOUT.sources,
+    adr:       layout.technical_decisions || DEFAULT_WIKI_LAYOUT.technical_decisions,
+    decisions: layout.product_decisions || DEFAULT_WIKI_LAYOUT.product_decisions,
+  };
+}
 
 /**
  * Resolve the state root directory for post-init markers given the active shells.
@@ -173,9 +199,20 @@ export async function writePostInitEnrichMarker(targetDir, stats, activeShells, 
  * @param {{ written: string[] }} stats — mutated in place
  * @param {string[]} [activeShells] — resolved shell list; defaults to ['claude-code']
  */
-export async function writePostInitConceptMarker(targetDir, detectionResult, stats, activeShells, { dryRun = false } = {}) {
-  // Greenfield-only gate: do not write the marker on upgrade or existing-project runs.
-  if (detectionResult.type !== 'greenfield') return;
+export async function writePostInitConceptMarker(targetDir, detectionResult, stats, activeShells, { dryRun = false, projectContext = {} } = {}) {
+  // Skip only on 'upgrade' — a project that already has content-bearing Hephaestus
+  // files has a knowledge base of its own, and ingesting a concept brief into it
+  // would write ADRs/decisions alongside ones the author already reviewed.
+  //
+  // 'existing' does NOT skip. A brand-new project that ran `git init` (or has a
+  // package.json) is classified 'existing', yet a CONCEPT.md sitting at its root is
+  // exactly the case Phase 7 is for. Gating this on 'greenfield' made the phase
+  // unreachable for anyone who initialised a repo before writing their brief.
+  //
+  // Idempotency does not depend on this gate: the marker is only written when
+  // CONCEPT.md is present, and Phase 7 moves CONCEPT.md out of the project root
+  // when it completes.
+  if (detectionResult.type === 'upgrade') return;
 
   // CONCEPT.md absence gate: do not write the marker when CONCEPT.md is not present.
   const conceptPath = resolve(targetDir, 'CONCEPT.md');
@@ -193,6 +230,13 @@ export async function writePostInitConceptMarker(targetDir, detectionResult, sta
   }
 
   const today = new Date().toISOString().slice(0, 10);
+
+  // Knowledge-base paths must match what lore-skeleton.js actually wrote.
+  const kb = resolveKnowledgeDirs(projectContext);
+  const adrDir       = `${kb.docsRoot}/${kb.adr}`;
+  const decisionsDir = `${kb.docsRoot}/${kb.decisions}`;
+  const wikiDir      = `${kb.docsRoot}/${kb.entries}`;
+  const rawDesignDir = `${kb.docsRoot}/${kb.sources}/design`;
 
   const content = `# POST_INIT_CONCEPT.md — Phase 7: Concept Ingestion
 <!-- CLAUDE_ONLY: This file is an instruction for the post-init LLM session. -->
@@ -243,7 +287,7 @@ and its date.
 
 Example of a stated/closed item:
 > CONCEPT.md says: "We will use PostgreSQL for persistence — already decided."
-> → Create \`lore/adr/NNNN-use-postgresql.md\` (Status: Accepted; source: CONCEPT.md).
+> → Create \`${adrDir}/NNNN-use-postgresql.md\` (Status: Accepted; source: CONCEPT.md).
 
 **Explicitly deferred choices** — \`DECISION NEEDED\` markers, open questions, items
 described as "TBD", "under consideration", or items with no stated resolution — go to
@@ -289,14 +333,14 @@ phrasing. Classification is based on phrasing and intent, not on vocabulary list
 
 ## (d) Artifact scope
 
-All artifacts are created under the project's lore root — by default \`lore/\`
-(\`lore/adr/\`, \`lore/decisions/\`, \`lore/wiki/\`, \`lore/raw/design/\`).
+All artifacts are created under the project's lore root — by default \`${kb.docsRoot}/\`
+(\`${adrDir}/\`, \`${decisionsDir}/\`, \`${wikiDir}/\`, \`${rawDesignDir}/\`).
 
 **Step 0 — Archive the brief first.** Before writing any wiki articles, copy the
 brief's content into the lore raw-design archive:
 
 \`\`\`
-lore/raw/design/YYYY-MM-DD-concept-<slug>.md
+${rawDesignDir}/YYYY-MM-DD-concept-<slug>.md
 \`\`\`
 
 Do this as a normal file write now, early, so that wiki articles can reference it in
@@ -305,17 +349,17 @@ later (see section (f)).
 
 Phase 7 then produces all four artifact types from the brief:
 
-1. **ADRs** (\`lore/adr/\`) — for stack and architectural choices explicitly stated as
+1. **ADRs** (\`${adrDir}/\`) — for stack and architectural choices explicitly stated as
    decided. Use the \`adr-template.md\` template (lore-keeper skill \`references/\`
    directory). Number them following the existing sequence. Status: Accepted. Add a
    note attributing the choice to CONCEPT.md and its date.
 
-2. **Decision records** (\`lore/decisions/\`) — for product/scope choices explicitly
+2. **Decision records** (\`${decisionsDir}/\`) — for product/scope choices explicitly
    stated as decided. Use the \`decision-template.md\` template (lore-keeper skill
    \`references/\` directory). Number them following the existing sequence. Status:
    Accepted. Attribute to CONCEPT.md and its date.
 
-3. **Wiki articles** (\`lore/wiki/\`) — for stable concepts described in the brief:
+3. **Wiki articles** (\`${wikiDir}/\`) — for stable concepts described in the brief:
    state models, messaging protocols, surfaces, data models, and similar. Use the
    \`article-template.md\` template (lore-keeper skill \`references/\` directory).
    Link the archived raw brief (from Step 0) in the article's \`Raw:\` field.
@@ -339,10 +383,10 @@ what the author wrote.
 
 After writing any wiki articles in step (d.3), update the index and log:
 
-- **\`lore/wiki/index.md\`** — add an entry for each new article in the appropriate
+- **\`${wikiDir}/index.md\`** — add an entry for each new article in the appropriate
   section (Articles, ADRs, or Decisions). Follow the lore-keeper index format
   (\`index-template.md\` in the \`references/\` directory).
-- **\`lore/wiki/log.md\`** — append one entry per new artefact (new ADR, new decision,
+- **\`${wikiDir}/log.md\`** — append one entry per new artefact (new ADR, new decision,
   new wiki article, material update). Follow the lore-keeper SKILL.md log format
   EXACTLY (do not invent a format).
 
@@ -358,7 +402,7 @@ any sub-agent that may lack a delete tool.
 Preferred shell command (if the session has shell access and the project uses git):
 
 \`\`\`
-git mv CONCEPT.md lore/raw/design/YYYY-MM-DD-concept-<slug>.md
+git mv CONCEPT.md ${rawDesignDir}/YYYY-MM-DD-concept-<slug>.md
 \`\`\`
 
 If \`git mv\` is not available, delete the file at the OS level:
@@ -376,7 +420,7 @@ run. The root must end with no file called \`CONCEPT.md\`.
 After this step, \`CONCEPT.md\` is absent from the project root and archived at:
 
 \`\`\`
-lore/raw/design/YYYY-MM-DD-concept-<slug>.md
+${rawDesignDir}/YYYY-MM-DD-concept-<slug>.md
 \`\`\`
 
 Its absence is the idempotency mechanism: the engine will not write
@@ -429,15 +473,21 @@ domain context instead.
  * @param {string[]} [activeShells] — resolved shell list; defaults to ['claude-code']
  */
 export async function writePostInitSeedMarker(targetDir, projectContext, stats, activeShells, { dryRun = false } = {}) {
-  // Resolve the wiki entries directory from project context (mirrors lore-skeleton.js logic).
-  const docsRoot = projectContext.docs_root ?? 'lore';
-  const wikiEntriesDir = projectContext.wiki_layout?.entries ?? 'wiki';
-  const wikiDir = resolve(targetDir, docsRoot, wikiEntriesDir);
+  // Resolve the knowledge-base directories from project context (mirrors lore-skeleton.js).
+  const kb = resolveKnowledgeDirs(projectContext);
+  const wikiDirAbs = resolve(targetDir, kb.docsRoot, kb.entries);
+
+  // Relative display paths for the instruction text — these must name the tree the
+  // engine actually created, not a hardcoded lore/.
+  const adrDir       = `${kb.docsRoot}/${kb.adr}`;
+  const decisionsDir = `${kb.docsRoot}/${kb.decisions}`;
+  const wikiDir      = `${kb.docsRoot}/${kb.entries}`;
+  const rawDesignDir = `${kb.docsRoot}/${kb.sources}/design`;
 
   // Skip-on-seeded guard: if any .md file other than index.md and log.md exists in
-  // lore/wiki/ (flat) OR in lore/wiki/<topic>/ (one level deep, the canonical
-  // lore-keeper convention) and has a non-empty body, the knowledge base has been
-  // seeded already.
+  // <docs_root>/<entries>/ (flat) OR in <docs_root>/<entries>/<topic>/ (one level
+  // deep, the canonical lore-keeper convention) and has a non-empty body, the
+  // knowledge base has been seeded already.
   const SCAFFOLD_FILENAMES = new Set(['index.md', 'log.md']);
 
   /**
@@ -456,23 +506,23 @@ export async function writePostInitSeedMarker(targetDir, projectContext, stats, 
     return body.trim().length > 0;
   }
 
-  if (existsSync(wikiDir)) {
+  if (existsSync(wikiDirAbs)) {
     let wikiEntries;
     try {
-      wikiEntries = readdirSync(wikiDir, { withFileTypes: true });
+      wikiEntries = readdirSync(wikiDirAbs, { withFileTypes: true });
     } catch {
       wikiEntries = [];
     }
     for (const dirent of wikiEntries) {
       if (dirent.isFile()) {
-        // Flat article directly under lore/wiki/
-        if (isAuthoredArticle(resolve(wikiDir, dirent.name), dirent.name)) {
+        // Flat article directly under <docs_root>/<entries>/
+        if (isAuthoredArticle(resolve(wikiDirAbs, dirent.name), dirent.name)) {
           // At least one authored article found — skip writing the marker.
           return;
         }
       } else if (dirent.isDirectory()) {
-        // One level of topic subdirectories — lore/wiki/<topic>/<article>.md
-        const topicDir = resolve(wikiDir, dirent.name);
+        // One level of topic subdirectories — <docs_root>/<entries>/<topic>/<article>.md
+        const topicDir = resolve(wikiDirAbs, dirent.name);
         let topicEntries;
         try {
           topicEntries = readdirSync(topicDir, { withFileTypes: true });
@@ -492,14 +542,21 @@ export async function writePostInitSeedMarker(targetDir, projectContext, stats, 
 
   const today = new Date().toISOString().slice(0, 10);
 
+  // Resolve the state root BEFORE building the content — the instruction text names
+  // its own path ("delete this file") and the skills dir, both of which are
+  // .claude/ for Claude Code and .github/ for a Copilot-only install.
+  const markerStateRoot = resolveMarkerStateRoot(activeShells, targetDir);
+  const stateRootName = markerStateRoot.endsWith('.github') ? '.github' : '.claude';
+  const markerPath = resolve(markerStateRoot, 'POST_INIT_SEED.md');
+
   const content = `# POST_INIT_SEED.md — Phase 8: Knowledge-base seeding
 <!-- CLAUDE_ONLY: This file is an instruction for the post-init LLM session. Do not commit this file; it is gitignored by default. -->
 <!-- Generated by Hephaestus on ${today}. Remove this file once Phase 8 is complete. -->
 
 ## What this file means
 
-Hephaestus has initialized this project's \`lore/\` knowledge base. The folder structure
-(\`raw/\`, \`wiki/\`, \`adr/\`, \`decisions/\`) exists but is not yet populated with compiled
+Hephaestus has initialized this project's \`${kb.docsRoot}/\` knowledge base. The folder structure
+(\`${kb.sources}/\`, \`${kb.entries}/\`, \`${kb.adr}/\`, \`${kb.decisions}/\`) exists but is not yet populated with compiled
 knowledge about this specific project. **Phase 8 (knowledge-base seeding) fills that gap.**
 
 Phase 8 runs after Phase 7 and ROADMAP seeding, and before Phase 9. The correct ordering
@@ -546,8 +603,8 @@ Do not apply hardcoded domain rules.
 
 Phase 8 produces exactly **two artifact types**:
 
-1. **Wiki articles** (\`lore/wiki/<topic>/\`)
-2. **One dated raw-note snapshot** (\`lore/raw/design/\`)
+1. **Wiki articles** (\`${wikiDir}/<topic>/\`)
+2. **One dated raw-note snapshot** (\`${rawDesignDir}/\`)
 
 No other artifact types are produced in Phase 8. The constraints on ADRs and decision
 records are stated in section (e) below.
@@ -567,7 +624,7 @@ truth; keep hallucination risk low by grounding every claim in what is actually 
 Write exactly one dated raw-note at:
 
 \`\`\`
-lore/raw/design/YYYY-MM-DD-<project-slug>-init-day.md
+${rawDesignDir}/YYYY-MM-DD-<project-slug>-init-day.md
 \`\`\`
 
 where \`YYYY-MM-DD\` is today's date and \`<project-slug>\` is a short kebab-case name
@@ -599,7 +656,7 @@ reference it in their \`Raw:\` field.
 
 All wiki articles follow **\`article-template.md\`** from the lore-keeper skill's
 \`references/\` directory. The raw note follows **\`raw-template.md\`** from the same
-directory. Both templates are in \`.claude/skills/lore-keeper/references/\` (or the
+directory. Both templates are in \`${stateRootName}/skills/lore-keeper/references/\` (or the
 equivalent path if the lore-keeper skill is installed elsewhere).
 
 Read the templates directly; do not reproduce them from memory or improvise a format.
@@ -614,12 +671,12 @@ this project.
 After writing each wiki article, update the knowledge-base index and log following
 the lore-keeper skill's indexing conventions:
 
-- **\`lore/wiki/index.md\`** — add an entry for each new article in the appropriate
+- **\`${wikiDir}/index.md\`** — add an entry for each new article in the appropriate
   topic section under \`## Articles\`. Follow the index format in \`index-template.md\`
   (lore-keeper skill \`references/\` directory). If the topic section does not exist
   yet, create it.
 
-- **\`lore/wiki/log.md\`** — append one entry per new artefact (new wiki article,
+- **\`${wikiDir}/log.md\`** — append one entry per new artefact (new wiki article,
   material update). Follow the lore-keeper SKILL.md log format exactly. Do not
   invent a format.
 
@@ -631,7 +688,7 @@ index rather than an index that is out of sync with the files on disk.
 
 ## (e) No ADRs and no decision records — rationale
 
-**Phase 8 does NOT write to \`lore/adr/\` or \`lore/decisions/\`.** This constraint is
+**Phase 8 does NOT write to \`${adrDir}/\` or \`${decisionsDir}/\`.** This constraint is
 absolute and applies regardless of what patterns, choices, or apparent architectural
 decisions you observe in the codebase.
 
@@ -654,14 +711,14 @@ The user will create those when they are ready to state the intent explicitly.
 
 ## (f) Phase 7 detection — avoid duplication
 
-If \`lore/raw/design/\` contains a file matching \`*-concept-*.md\`, Phase 7 has already
+If \`${rawDesignDir}/\` contains a file matching \`*-concept-*.md\`, Phase 7 has already
 run for this project. When this condition is true:
 
 - Do NOT re-generate ADRs or decision records — Phase 7 has already produced the
   concept-sourced lore artifacts. Creating them again would duplicate records the
   decision-maker has already reviewed and accepted.
 - Focus Phase 8 output on **code-derived wiki articles** not already covered by Phase
-  7's wiki articles. Read the existing \`lore/wiki/\` articles before writing new ones;
+  7's wiki articles. Read the existing \`${wikiDir}/\` articles before writing new ones;
   if Phase 7 already captured a concept, extend it or skip it rather than creating a
   parallel article.
 - The no-ADR/no-decision constraint that governs Phase 8 remains fully in force for
@@ -669,7 +726,7 @@ run for this project. When this condition is true:
   above grants no new permission to create ADRs or decisions; it only tells Phase 8 to
   skip what Phase 7 already produced.
 
-If no \`*-concept-*.md\` file exists in \`lore/raw/design/\`, Phase 7 has not run.
+If no \`*-concept-*.md\` file exists in \`${rawDesignDir}/\`, Phase 7 has not run.
 Proceed with normal Phase 8 output (wiki articles + raw-note snapshot); the
 no-ADR/no-decision constraint applies as stated above.
 
@@ -677,7 +734,7 @@ no-ADR/no-decision constraint applies as stated above.
 
 ## After Phase 8 is complete
 
-Delete this file (\`.claude/POST_INIT_SEED.md\`). The knowledge-base files you wrote
+Delete this file (\`${stateRootName}/POST_INIT_SEED.md\`). The knowledge-base files you wrote
 remain.
 
 If Phase 9 is pending (\`POST_INIT_ENRICH.md\` is present), proceed to Phase 9 now.
@@ -686,10 +743,8 @@ Report a brief summary to the user: how many wiki articles were written, whether
 project was treated as existing or greenfield, and the path of the raw-note snapshot.
 `;
 
-  // Resolve the state root for this target (ADR 0039 §5, M12.13).
-  const markerStateRoot = resolveMarkerStateRoot(activeShells, targetDir);
-  const stateRootName = markerStateRoot.endsWith('.github') ? '.github' : '.claude';
-  const markerPath = resolve(markerStateRoot, 'POST_INIT_SEED.md');
+  // markerStateRoot / stateRootName / markerPath are resolved above the content
+  // block — the instruction text embeds the state-root name.
 
   if (dryRun) {
     // Record disposition without writing.

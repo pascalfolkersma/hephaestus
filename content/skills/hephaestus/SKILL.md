@@ -54,14 +54,57 @@ Proposed: <sensible default or derived answer>
 Wait for the user to confirm or override each answer before proceeding. Hybrid proposals that the user does not touch are accepted as-is.
 
 The surviving `user-only` prompts in a standard project are:
-- `Shell(s) to render` — which AI tool(s) to render agents for (`claude-code`, `copilot`, or `both`).
+- `Shell(s) to render` — which AI tool(s) to render agents for (`claude-code`, `copilot`, or `both`). **Ask this first** — it determines the state root (see below) that every later path in this skill depends on.
 - `Agents to render` — which agents from the catalog to include in the initial set (content choice, not a spine toggle).
-- `Skills to install` — which skills to install; the default is `lore-keeper`.
+- `Skills to install` — which skills to install. **Present the full catalog, not just the default.** See "Skill catalog" below.
 - `Output language` — language for agent prose (e.g., English, Dutch).
 - `Commit message language` — language for commit messages.
-- `Memory location` — where project memory should live (`project-local` for `.claude/memory/` or `global` for `~/.claude/projects/<slug>/memory/`).
+- `Memory location` — where project memory should live (`project-local` for `<stateRoot>/memory/` or `global` for `~/.claude/projects/<slug>/memory/`).
 - `Evidence style` — how the reviewer agent cites evidence (when a reviewer agent is in scope).
 - Any additional prompts classified `user-only` in `references/prompt-classification.yaml` at the time of invocation.
+
+#### The state root
+
+Everything Hephaestus writes into the project's AI-tool tree is rooted at a per-shell
+directory. **Resolve it once from the `Shell(s) to render` answer and use it for every
+path in the rest of this skill:**
+
+| Shell answer | State root (`<stateRoot>`) |
+|---|---|
+| `claude-code` | `.claude/` |
+| `both` | `.claude/` (Claude Code takes precedence for markers and state) |
+| `copilot` | `.github/` |
+
+Under `copilot`, agents render to `.github/agents/*.agent.md`, skills install to
+`.github/skills/`, memory lives at `.github/memory/`, hooks at `.github/hooks/`, and the
+post-init markers are written to `.github/`. **Do not describe, check for, or create
+`.claude/` paths on a copilot-only init** — doing so builds a second, empty tree that the
+project will never use.
+
+#### Skill catalog
+
+The engine installs any skill directory under the bundle's `content/skills/`. Do not
+present `lore-keeper` as the only option. List the catalog and let the user pick; the
+default when they express no preference is `lore-keeper` alone.
+
+| Skill | Use it when the project… |
+|---|---|
+| `lore-keeper` | keeps a knowledge base (raw sources, wiki, ADRs, decisions). **Default.** |
+| `design-sync` | ingests Claude Design URLs (Flow 6). |
+| `roadmap-parser` | uses a `ROADMAP.md` with milestone/item IDs and wave markers. |
+| `dispatch-decision-tree` | wants explicit guidance on which specialist agent handles a request. |
+| `codebase-introspection` | needs package-manager / dependency / structure detection before changes. |
+| `contract-validator` | authors or edits Hephaestus agent source files. |
+| `api-contract-tester` | has an HTTP API with request/response contract tests. |
+| `react-component-author` | is a React or Next.js codebase. |
+| `sql-migration-writer` | owns relational schema migrations. |
+| `github-actions-author` | maintains CI/CD workflow YAML. |
+
+Confirm the list against the bundle at invocation time rather than trusting this table —
+run `Glob` on `<hephaestus-skill-dir>/content/skills/*/SKILL.md` and read each
+`description:` field. The table above is a convenience, not the source of truth.
+
+Never include `hephaestus` itself in the `skills` answer (see Step 4).
 
 For a typical new project, four to five of these will surface; the rest either fall back to defaults or can be left to the user after init. Do not surface `repo-derivable` prompts unless the repo signals are ambiguous.
 
@@ -94,7 +137,39 @@ domain_context: "Inventory management REST API for warehouse operations"
 
 **`agents` field:** Use `agents: ''` (empty string) to render all 8 agents — that is the correct default for most projects. Only specify a comma-separated subset (e.g. `agents: "developer, bug-fixer, test-writer"`) when the user explicitly wants fewer agents. The full catalog is: `bug-fixer, developer, git-commit-push, idea-architect, orchestrator, reviewer, sync-check, test-writer`. Do not guess a subset — if in doubt, leave it empty.
 
-Include **every** prompt from `references/prompt-classification.yaml` in the file — even repo-derived ones. The `--config` flag on the bundled `init.js` reads the full answer set; omitting a key causes it to fall back to the interactive prompt loop for that field.
+Include every prompt from `references/prompt-classification.yaml` **that you have a real value for** — including repo-derived ones. The `--config` flag on the bundled `init.js` reads the full answer set; omitting a key makes it fall back to that field's built-in default, or to the interactive prompt when there is none.
+
+**Never write a key with an empty value.** This is the single most damaging mistake at this step.
+
+```yaml
+# WRONG — silently defeats the engine's defaults and its required-field checks
+docs_root: ""
+build_command: ""
+source_directories: ""
+
+# RIGHT — omit what you could not derive
+docs_root: lore
+# build_command / source_directories omitted: nothing in the repo to derive them from
+```
+
+A blank `docs_root` in particular resolves the knowledge base to the project root, scattering `wiki/`, `raw/`, `adr/`, and `decisions/` across the top level of the project.
+
+**Required keys must carry a real value.** These have no built-in default, and init now aborts with an explicit error rather than proceeding half-configured:
+
+```
+project_name  domain_context  build_command  key_directories
+source_directories  deploy_trigger  review_scope  standards  tech_stack
+```
+
+`domain_context`, `build_command`, `key_directories`, and `tech_stack` become optional **only** when introspection can derive them (a populated `package.json`, an existing README, a real source tree). On an empty repo none of them can be, so supply all nine yourself — asking the user is the correct move when you cannot derive one.
+
+Everything else is genuinely optional: omit what you cannot derive and let the engine's defaults apply. A short `init.yaml` is a correct `init.yaml`.
+
+The only two keys where an empty string is a **meaningful** answer are:
+- `agents: ''` — render all agents (the correct default; see below).
+- `skills: ''` — install the default skill set.
+
+Write scalars, not YAML lists. `always_exclude` and similar multi-value fields are single strings: `always_exclude: "`/dist`, `.claude/flows/`"`, not a `-` item list.
 
 **Important — `skills` field:** Do **not** include `hephaestus` in the `skills` list. The `hephaestus` skill is the bootstrap orchestrator; it was already installed into the target project by Phase 1 (`npx @pascalfolkersma/hephaestus install`). Including it again would trigger a self-referential install that the engine deliberately blocks. The default value for `skills` is `lore-keeper` (the sole default).
 
@@ -110,7 +185,7 @@ npx @pascalfolkersma/hephaestus init --config init.yaml <targetDir>
 
 Where `<targetDir>` is the project root (usually `.` when the current working directory is the target project). The engine is invoked via npx from the published package — no local `core/` directory is needed at the target project root.
 
-For upgrade-mode targets (projects already initialized with Hephaestus, detected by the presence of `.claude/agents/` or an existing AGENTS.md), add the appropriate flag:
+For upgrade-mode targets (projects already initialized with Hephaestus, detected by the presence of `<stateRoot>/agents/` or an existing AGENTS.md), add the appropriate flag:
 
 ```
 npx @pascalfolkersma/hephaestus init --config init.yaml --ai-session <targetDir>
@@ -128,25 +203,31 @@ Run the structural verification pass described in `references/verify-checklist.m
 
 Run the eight checks below in order. For each check, the procedure describes exactly what to examine, what constitutes a pass, and — for auto-fixable checks — the exact action to take. Collect all findings before generating the final summary.
 
+**`<stateRoot>` throughout Step 6 is the directory resolved in Step 3** — `.claude/` for `claude-code` and `both`, `.github/` for `copilot`. Substitute it before running any check. Checking a `.claude/` path on a copilot-only init will report every directory as missing and then create an empty tree the project does not use.
+
 #### Check 1 — Expected directories exist
 
 **What to examine.** Verify that each of the following directories exists at `<targetDir>`:
 
 ```
-<targetDir>/.claude/
-<targetDir>/.claude/agents/
-<targetDir>/.claude/skills/
-<targetDir>/.claude/memory/
-<targetDir>/.claude/hooks/
+<targetDir>/<stateRoot>/
+<targetDir>/<stateRoot>/agents/
+<targetDir>/<stateRoot>/skills/
+<targetDir>/<stateRoot>/memory/
+<targetDir>/<stateRoot>/hooks/
 ```
+
+For `shells: both`, run this check twice — once against `.claude/` and once against `.github/` — since init renders agents, skills, and hooks into both trees. Marker files and `memory/` are written only to `.claude/` in that case; do not create a `.github/memory/` for a `both` install.
 
 **How to check.** Use the `Read` or `Glob` tool to confirm each path is a directory. A non-existent path and an empty path are both treated as missing.
 
 **Auto-fix.** For each directory that is absent:
 1. Create the directory.
-2. Create a `.gitkeep` file inside it (so git tracks the empty directory). Write an empty file at `<targetDir>/.claude/<name>/.gitkeep`.
+2. Create a `.gitkeep` file inside it (so git tracks the empty directory). Write an empty file at `<targetDir>/<stateRoot>/<name>/.gitkeep`.
 
 **Pass condition.** All five directories exist after any auto-fix. Record each directory that was created in the auto-fix log.
+
+**Do not create the other shell's tree.** If the resolved state root is `.github/`, a missing `.claude/` is correct, not a finding.
 
 ---
 
@@ -156,8 +237,11 @@ Run the eight checks below in order. For each check, the procedure describes exa
 
 ```
 <targetDir>/AGENTS.md
-<targetDir>/.claude/settings.json
+<targetDir>/.claude/settings.json      # claude-code / both only
+<targetDir>/.github/hooks/hooks.json   # copilot only — Copilot's hook config format
 ```
+
+`AGENTS.md` is written for every shell. The second file depends on the state root: Claude Code uses `settings.json`, Copilot uses `hooks/hooks.json`. Check only the one matching the resolved state root.
 
 **How to check.** Use the `Read` tool on each path. If the file is absent, do not attempt to create it.
 
@@ -173,8 +257,10 @@ Run the eight checks below in order. For each check, the procedure describes exa
 
 ```
 /dist
-.claude/flows/
+<stateRoot>/flows/
 ```
+
+The flows directory follows the state root: `.claude/flows/` for Claude Code, `.github/flows/` for Copilot. For `shells: both`, require both lines.
 
 **How to check.** Read the file with the `Read` tool, then check each required line against the file contents.
 
@@ -188,48 +274,55 @@ Run the eight checks below in order. For each check, the procedure describes exa
 
 #### Check 4 — No flat-copy artifacts
 
-**What to examine.** Check for skill-related files that were incorrectly placed at the target project root or directly inside `.claude/` (not inside a named subdirectory under `.claude/skills/`).
+**What to examine.** Check for skill-related files that were incorrectly placed at the target project root or directly inside `<stateRoot>/` (not inside a named subdirectory under `<stateRoot>/skills/`).
 
 Flat-copy artifacts look like:
 - `<targetDir>/SKILL.md`
 - `<targetDir>/UPSTREAM.md`
 - `<targetDir>/README.md` — only flag if the file's first line contains `# Lore-keeper` or another Hephaestus skill name (i.e., it is a skill README, not the project's own README)
-- Any file named `SKILL.md`, `UPSTREAM.md` directly under `<targetDir>/.claude/` (not inside a subdirectory)
+- Any file named `SKILL.md`, `UPSTREAM.md` directly under `<targetDir>/<stateRoot>/` (not inside a subdirectory)
 
 **How to check.** Use the `Glob` tool:
 - Check for `<targetDir>/SKILL.md`, `<targetDir>/UPSTREAM.md`.
-- Check for `<targetDir>/.claude/SKILL.md`, `<targetDir>/.claude/UPSTREAM.md`.
+- Check for `<targetDir>/<stateRoot>/SKILL.md`, `<targetDir>/<stateRoot>/UPSTREAM.md`.
 - For `<targetDir>/README.md`, read its first line — flag it only if it starts with a known Hephaestus skill heading.
 
 **Auto-fix decision rule:**
 - Identify the likely skill name from the artifact's content (e.g., the `name:` field in a SKILL.md frontmatter, or the heading in a README.md).
-- Check whether `<targetDir>/.claude/skills/<name>/` is absent or contains only `.gitkeep` (treat as empty).
-  - **If the destination is empty or absent:** move the artifact to `<targetDir>/.claude/skills/<name>/<filename>`. Create the destination directory if needed. Moving means: write the file to the new path, then delete the original.
+- Check whether `<targetDir>/<stateRoot>/skills/<name>/` is absent or contains only `.gitkeep` (treat as empty).
+  - **If the destination is empty or absent:** move the artifact to `<targetDir>/<stateRoot>/skills/<name>/<filename>`. Create the destination directory if needed. Moving means: write the file to the new path, then delete the original.
   - **If the destination is non-empty, or if the skill name cannot be determined from the artifact's content:** do not move. Add the artifact path and the reason (non-empty destination / ambiguous name) to the report-only findings list.
 
-**Pass condition.** No flat-copy artifacts remain at the project root or directly under `.claude/`. Moved artifacts are recorded in the auto-fix log; ambiguous ones are in the report-only list.
+**Pass condition.** No flat-copy artifacts remain at the project root or directly under `<stateRoot>/`. Moved artifacts are recorded in the auto-fix log; ambiguous ones are in the report-only list.
 
 ---
 
-#### Check 5 — Skill folders intact under `.claude/skills/`
+#### Check 5 — Skill folders intact under `<stateRoot>/skills/`
 
-**What to examine.** Identify which skills were installed by init. Read `<targetDir>/AGENTS.md` for any skill references, or use `Glob` on `<targetDir>/.claude/skills/` to list existing subdirectories. At minimum, check for `lore-keeper` — it is always installed by the default init flow.
+**What to examine.** The expected skill set is **the `skills` value you wrote to `init.yaml` in Step 4** — not a hardcoded assumption. Cross-check it against `Glob` on `<targetDir>/<stateRoot>/skills/` to see what actually landed.
 
-For each expected skill folder:
-- Verify that `<targetDir>/.claude/skills/<name>/` exists and contains at least one file other than `.gitkeep`.
+For each expected skill:
+- Verify that `<targetDir>/<stateRoot>/skills/<name>/` exists and contains at least one file other than `.gitkeep`.
 
-**How to check.** Use `Glob` on `<targetDir>/.claude/skills/<name>/`.
+Do not assume the expected set is `lore-keeper` alone. If the user selected `design-sync`, `roadmap-parser`, or any other skill in Step 3, each one is expected here and a missing folder is a finding.
 
-**Auto-fix — bundled skills only.** This skill bundle (the `hephaestus` folder you were loaded from) contains the following bundled skill copies:
-- `lore-keeper/` — bundled at `<hephaestus-skill-dir>/lore-keeper/`
+**How to check.** Use `Glob` on `<targetDir>/<stateRoot>/skills/<name>/`.
 
-Where `<hephaestus-skill-dir>` is the directory from which this `SKILL.md` was loaded (i.e., the directory that contains this file). In a typical target session install, this is `<targetDir>/.claude/skills/hephaestus/`.
+**Auto-fix — bundled skills.** This skill bundle carries a full copy of the engine's skill catalog at:
 
-If a skill folder under `.claude/skills/` is absent or empty **and** the skill is present in the hephaestus bundle:
-1. Copy the entire skill folder from `<hephaestus-skill-dir>/<skill-name>/` to `<targetDir>/.claude/skills/<skill-name>/`.
+```
+<hephaestus-skill-dir>/content/skills/<skill-name>/
+```
+
+Where `<hephaestus-skill-dir>` is the directory from which this `SKILL.md` was loaded. In a typical target install that is `<targetDir>/<stateRoot>/skills/hephaestus/`, so the catalog is at `<targetDir>/<stateRoot>/skills/hephaestus/content/skills/`.
+
+Every installable skill is there — `lore-keeper`, `design-sync`, `roadmap-parser`, and the rest. (Some older bundles also carry a top-level `<hephaestus-skill-dir>/lore-keeper/` copy; prefer the `content/skills/` path, which is the one the build maintains.) The bundle deliberately does **not** contain a nested `hephaestus/` entry — that recursion exclusion is by design, and `hephaestus` never needs restoring since Phase 1 installed it.
+
+If an expected skill folder under `<stateRoot>/skills/` is absent or empty **and** the skill exists in the bundle catalog:
+1. Copy the entire skill folder from `<hephaestus-skill-dir>/content/skills/<skill-name>/` to `<targetDir>/<stateRoot>/skills/<skill-name>/`.
 2. Preserve the full directory tree of the bundled copy (including all subdirectories and files).
 
-If a skill is expected but **not present in the hephaestus bundle** (it was installed by init from a source outside the bundle): do not attempt to re-copy. Add the skill name and "not in hephaestus bundle — re-run init to restore" to the report-only findings list.
+If a skill is expected but **not present in the bundle catalog**: do not attempt to re-copy. Add the skill name and "not in hephaestus bundle — re-run init to restore" to the report-only findings list.
 
 **Pass condition.** All expected skill folders contain at least one non-`.gitkeep` file after any auto-fix. Record each restored skill folder in the auto-fix log; each non-restorable one in the report-only list.
 
@@ -237,15 +330,15 @@ If a skill is expected but **not present in the hephaestus bundle** (it was inst
 
 #### Check 6 — Agent frontmatter valid
 
-**What to examine.** For each `.md` file under `<targetDir>/.claude/agents/`, verify that it has a valid YAML frontmatter block:
+**What to examine.** For each agent file under `<targetDir>/<stateRoot>/agents/`, verify that it has a valid YAML frontmatter block. The file extension differs per shell: `.md` under `.claude/agents/`, `.agent.md` under `.github/agents/`.
 - Frontmatter is delimited by `---` on the first line and a closing `---` line.
 - The frontmatter contains at minimum a `name:` field and a `description:` field.
 - The YAML between the delimiters parses without error (no duplicate keys, no invalid syntax).
 
-**How to check.** Read each file under `<targetDir>/.claude/agents/`. Parse the frontmatter section manually: extract the text between the first `---` and the second `---`, then check for `name:` and `description:` fields. If you cannot parse the YAML (duplicate keys, invalid indentation), flag it as malformed.
+**How to check.** Read each file under `<targetDir>/<stateRoot>/agents/`. Parse the frontmatter section manually: extract the text between the first `---` and the second `---`, then check for `name:` and `description:` fields. If you cannot parse the YAML (duplicate keys, invalid indentation), flag it as malformed.
 
 **Report-only.** Do not modify agent files. For each file with a frontmatter issue, add to the report-only findings list:
-- File path (e.g., `.claude/agents/developer.md`)
+- File path (e.g., `.claude/agents/developer.md`, or `.github/agents/developer.agent.md`)
 - Specific issue (e.g., "missing `description:` field", "YAML parse error: duplicate key `name`")
 
 **Pass condition.** All agent files have valid frontmatter with both required fields. Any failures go to the report-only list.
@@ -254,18 +347,18 @@ If a skill is expected but **not present in the hephaestus bundle** (it was inst
 
 #### Check 7 — Hooks syntactically runnable
 
-**What to examine.** For each `.js` file under `<targetDir>/.claude/hooks/`, verify it passes Node.js syntax checking.
+**What to examine.** For each `.js` file under `<targetDir>/<stateRoot>/hooks/`, verify it passes Node.js syntax checking.
 
 **How to check.** Run:
 
 ```
-node --check <targetDir>/.claude/hooks/<filename>.js
+node --check <targetDir>/<stateRoot>/hooks/<filename>.js
 ```
 
-Run this for each `.js` file found under `.claude/hooks/`. If there are no `.js` files, skip this check and note it was skipped (not a failure).
+Run this for each `.js` file found under `<stateRoot>/hooks/`. If there are no `.js` files, skip this check and note it was skipped (not a failure).
 
 **Report-only.** Do not modify hook files. For each file that fails the syntax check, add to the report-only findings list:
-- File path (e.g., `.claude/hooks/dispatch-enforce.js`)
+- File path (e.g., `.claude/hooks/dispatch-enforce.js`, or `.github/hooks/dispatch-enforce.js`)
 - The error output from `node --check`
 
 **Pass condition.** All `.js` hook files pass `node --check`. Any failures go to the report-only list.
@@ -274,15 +367,15 @@ Run this for each `.js` file found under `.claude/hooks/`. If there are no `.js`
 
 #### Check 8 — Contract-validator passes for rendered agents
 
-**What to examine.** Check whether the bundled contract-validator exists at `.claude/skills/hephaestus/core/lib/validator.js`. If not, do a fallback search for any file named `validator.js` under `.claude/skills/hephaestus/core/`.
+**What to examine.** Check whether the bundled contract-validator exists at `<stateRoot>/skills/hephaestus/core/lib/validator.js`. If not, do a fallback search for any file named `validator.js` under `<stateRoot>/skills/hephaestus/core/`.
 
 **How to check.** Use the `Read` tool to probe for existence of each path.
 
-- **If neither path exists:** skip this check. Add "contract-validator not found at `.claude/skills/hephaestus/core/lib/validator.js` — check skipped" to the report-only findings list.
+- **If neither path exists:** skip this check. Add "contract-validator not found at `<stateRoot>/skills/hephaestus/core/lib/validator.js` — check skipped" to the report-only findings list.
 - **If a validator is found:** run it against the agents folder:
 
 ```
-node .claude/skills/hephaestus/core/lib/validator.js <targetDir>/.claude/agents/
+node <stateRoot>/skills/hephaestus/core/lib/validator.js <targetDir>/<stateRoot>/agents/
 ```
 
 (or whichever path was found via the fallback search).
@@ -311,18 +404,38 @@ After verify-and-fix completes, report a summary to the user:
 
 ### Post-init session ordering
 
+**Post-init does not end at Step 6.** After verify-and-fix, you must look for the marker
+files and execute any phase they signal. Skipping this leaves the project with an empty
+knowledge base and an unseeded ROADMAP.
+
+**Markers live under the state root — the same `<stateRoot>` resolved in Step 3.** The
+engine writes them to `.claude/` for `claude-code` and `both`, and to `.github/` for a
+copilot-only install. Probe the correct directory:
+
+```
+<stateRoot>/POST_INIT_CONCEPT.md   — Phase 7 pending
+<stateRoot>/POST_INIT_SEED.md      — Phase 8 pending
+<stateRoot>/POST_INIT_ENRICH.md    — Phase 9 pending
+```
+
+Check all three explicitly with `Read` or `Glob` before concluding no phases are pending.
+On Claude Code the session-start hook also surfaces them, but that hook is a convenience,
+not the mechanism — **Copilot has no session-start hook, so on a copilot install these
+probes are the only way the phases ever fire.** A missing `.claude/POST_INIT_*.md` on a
+copilot init is not evidence that no phase is pending; look in `.github/`.
+
 When more than one post-init marker file is present, execute the phases in this order:
 
 ```
-Phase 7 (concept ingestion)   — .claude/POST_INIT_CONCEPT.md present (greenfield + CONCEPT.md)
+Phase 7 (concept ingestion)   — <stateRoot>/POST_INIT_CONCEPT.md present (CONCEPT.md at root, non-upgrade init)
   → ROADMAP seeding           — uses the brief's real milestones as signal
   → Phase 8 (knowledge seeding) — writes from the brief rather than emitting stubs
-  → Phase 9 (enrichment)      — .claude/POST_INIT_ENRICH.md present (upgrade-mode)
+  → Phase 9 (enrichment)      — <stateRoot>/POST_INIT_ENRICH.md present (upgrade-mode)
 ```
 
 **Before proceeding to ROADMAP seeding**, verify that `CONCEPT.md` is no longer present at the
 project root (i.e., it has been moved to `lore/raw/design/YYYY-MM-DD-concept-<slug>.md` as
-instructed in `.claude/POST_INIT_CONCEPT.md`). ROADMAP seeding reads the archived brief from
+instructed in `<stateRoot>/POST_INIT_CONCEPT.md`). ROADMAP seeding reads the archived brief from
 `lore/raw/design/` as its signal source. Do not run ROADMAP seeding while `CONCEPT.md` is still
 at the project root — Phase 7 is not complete until the file is moved.
 
@@ -331,20 +444,29 @@ Phase 9 as described below.
 
 ---
 
-### Phase 7 — concept ingestion (greenfield only)
+### Phase 7 — concept ingestion
 
 **What it does.** Phase 7 ingests a `CONCEPT.md` brief that the user placed at the project root
 before running init. It produces real lore artifacts — ADRs, decision records, wiki articles, and
 ROADMAP entries — sourced from the author's stated intent rather than inferred from code.
 
-**When it fires.** Phase 7 fires when ALL of the following are true:
+**When it fires.** Phase 7 fires when BOTH of the following are true:
 
-1. The init run is greenfield (no pre-existing Hephaestus files detected).
+1. The init run is not an **upgrade** (i.e. the project has no content-bearing Hephaestus
+   files yet). A brand-new project that has already run `git init`, or that has a
+   `package.json`, still qualifies — those make the run `existing`, not `upgrade`.
 2. `CONCEPT.md` is present at the project root at init time.
 
-The engine (`core/init.js`) detects both conditions and writes `.claude/POST_INIT_CONCEPT.md`. The
-session-start hook surfaces the marker; this session reads it and executes Phase 7. The engine
-performs no LLM work.
+The engine (`core/init.js`) detects both conditions and writes `<stateRoot>/POST_INIT_CONCEPT.md`.
+The engine performs no LLM work.
+
+**Do not rely on the session-start hook to tell you the marker exists.** It only runs on
+Claude Code. Probe `<stateRoot>/POST_INIT_CONCEPT.md` directly as described in "Post-init
+session ordering" above.
+
+If `CONCEPT.md` is present at the project root but no marker was written, the run was
+classified `upgrade`. Say so plainly and ask the user whether to run Phase 7 manually —
+do not silently skip a brief the author deliberately placed there.
 
 **The record-vs-defer rule.**
 
@@ -391,7 +513,7 @@ highly domain-specific stack. The Hephaestus spine is mandatory (backbone, not b
 (a real delete or `git mv`) — not by a sub-agent that may lack a delete tool — and no
 redirect stub may remain at the root (any file named `CONCEPT.md` re-triggers Phase 7).
 
-Full instructions for the LLM executing Phase 7 are in `.claude/POST_INIT_CONCEPT.md`.
+Full instructions for the LLM executing Phase 7 are in `<stateRoot>/POST_INIT_CONCEPT.md`.
 
 ---
 
@@ -405,7 +527,7 @@ time.
 **When it fires.** Phase 8 fires on EVERY init run (both greenfield and existing-project), unless
 the knowledge base has already been seeded. The skip-on-seeded guard is: if `lore/wiki/` already
 contains any `.md` file other than `index.md` and `log.md` with a non-empty body, the engine does
-not write `.claude/POST_INIT_SEED.md`. The engine performs no LLM work.
+not write `<stateRoot>/POST_INIT_SEED.md`. The engine performs no LLM work.
 
 **Ordering.** Phase 8 runs after Phase 7 and ROADMAP seeding, and before Phase 9. See the
 "Post-init session ordering" block above. If `POST_INIT_CONCEPT.md` is present, complete Phase 7
@@ -449,7 +571,7 @@ non-empty body, the engine has not written `POST_INIT_SEED.md`. No Phase 8 actio
 `lore/wiki/log.md` following the lore-keeper skill's conventions. Update incrementally (not in a
 single pass at the end) so a partial run leaves a consistent index.
 
-Full instructions for the LLM executing Phase 8 are in `.claude/POST_INIT_SEED.md`.
+Full instructions for the LLM executing Phase 8 are in `<stateRoot>/POST_INIT_SEED.md`.
 
 ---
 
@@ -460,7 +582,7 @@ ROADMAP seeding, and Phase 8 (knowledge seeding). If `POST_INIT_SEED.md` is stil
 you reach this point, Phase 8 has not yet completed — finish Phase 8 first (see the Phase 8
 section above), then return here for Phase 9.
 
-After verify-and-fix completes, check whether `.claude/POST_INIT_ENRICH.md` exists in the target
+After verify-and-fix completes, check whether `<stateRoot>/POST_INIT_ENRICH.md` exists in the target
 project:
 
 - **If the file exists:** Phase 9 enrichment is pending. Read the marker file now — it contains the
@@ -471,7 +593,7 @@ project:
   the user to review.
 
   **Ecosystem integration analysis (upgrade-mode, custom agents present).** If the target project
-  has agent files under `.claude/agents/` that are not part of the Hephaestus spine set (i.e.,
+  has agent files under `<stateRoot>/agents/` that are not part of the Hephaestus spine set (i.e.,
   custom agents the project already owned before this init run), the enrichment session includes an
   additional ecosystem analysis step:
 

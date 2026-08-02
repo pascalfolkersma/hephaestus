@@ -67,11 +67,11 @@ Flow 2: closes the build pipeline — first commit-mode, then (after green sync-
 After a successful `git push` at the end of flow 2 or flow 3, signal flow completion by writing the done marker as the absolute last action:
 
 ```bash
-SESSION_ID=$(cat .claude/.current-session-id)
-touch ".claude/flows/${SESSION_ID}/done"
+SESSION_ID=$(cat {{STATE_ROOT}}/.current-session-id)
+touch "{{STATE_ROOT}}/flows/${SESSION_ID}/done"
 ```
 
-Read the session ID from `.claude/.current-session-id`, then write the `done` marker file inside the current session directory. The Stop hook reads this marker on the next `Stop` event and removes the entire session directory. Do **not** remove the directory yourself — the hook is the sole owner of deletion.
+Read the session ID from `{{STATE_ROOT}}/.current-session-id`, then write the `done` marker file inside the current session directory. The Stop hook reads this marker on the next `Stop` event and removes the entire session directory. Do **not** remove the directory yourself — the hook is the sole owner of deletion.
 
 This explicitly closes the flow: the next session or a new flow start writes a fresh `context.json` in its own session directory.
 
@@ -86,8 +86,8 @@ After a successful `git push` in push-mode, and **before** writing the done-mark
 **Guard — when to ask:** the prompt fires **only** when the current session flow is **2 or 3**. Read `context.json` to check:
 
 ```bash
-SESSION_ID=$(cat .claude/.current-session-id)
-FLOW=$(node -e "const c=require('.claude/flows/${SESSION_ID}/context.json'); process.stdout.write(String(c.flow))")
+SESSION_ID=$(cat {{STATE_ROOT}}/.current-session-id)
+FLOW=$(node -e "const c=require('{{STATE_ROOT}}/flows/${SESSION_ID}/context.json'); process.stdout.write(String(c.flow))")
 ```
 
 Do **not** ask the prompt when:
@@ -96,7 +96,7 @@ Do **not** ask the prompt when:
 - The `git push` failed — never prompt on a failed push.
 
 **On Y:**
-1. The main thread writes `{"flow":5,"current_agent":"release","current_task":"release","iteration":1}` to `.claude/flows/<session-id>/context.json` (same session directory, updating the existing `context.json` in place).
+1. The main thread writes `{"flow":5,"current_agent":"release","current_task":"release","iteration":1}` to `{{STATE_ROOT}}/flows/<session-id>/context.json` (same session directory, updating the existing `context.json` in place).
 2. The main thread proceeds with the flow-5 sequence (see `{{DOCS_ROOT}}/flows.md` §Flow 5). This agent does **not** reimplement the sequence — it only triggers the handoff.
 3. The done-marker is written by the flow-5 sequence as its final step (step 9). Do **not** write it here in push-mode when Y is chosen.
 
@@ -112,7 +112,7 @@ Do **not** ask the prompt when:
 4. **Stage relevant files.** Add files explicitly by path; avoid `git add -A` or `git add .`. Always exclude: {{ALWAYS_EXCLUDE}}. When in doubt about a file, ask the user.
 5. **Write a meaningful commit message** per the conventions below.
 6. **Stop here in commit-mode.** git-commit-push does not push automatically. Report back to the orchestrator that the commit is ready. The orchestrator dispatches @agent-sync-check; only on a green result does it call git-commit-push again with an explicit `mode: push-only` instruction. In push-mode, git-commit-push runs only `git push {{DEPLOY_BRANCH}}` and reports the push result.
-   - **■ FORBIDDEN in commit-mode:** do NOT write the done-marker (`.claude/flows/<session>/done`) and do NOT touch the session directory in any way. The flow is not complete; the push step still needs to run. The done-marker is written in push-mode only, after a successful `git push`.
+   - **■ FORBIDDEN in commit-mode:** do NOT write the done-marker (`{{STATE_ROOT}}/flows/<session>/done`) and do NOT touch the session directory in any way. The flow is not complete; the push step still needs to run. The done-marker is written in push-mode only, after a successful `git push`.
 
 ## Modes
 

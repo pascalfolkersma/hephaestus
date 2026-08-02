@@ -33,6 +33,11 @@ export async function openReadline() {
 
   let lineIdx = 0;
   return {
+    // False once the buffer is drained. Callers that would otherwise re-ask
+    // forever (askRequired) use this to fail with a useful message instead of
+    // spinning on an endless supply of empty strings.
+    get hasInput() { return lineIdx < lines.length; },
+    isInteractive: false,
     question: async (prompt) => {
       process.stdout.write(prompt);
       const answer = lines[lineIdx++] ?? '';
